@@ -44,6 +44,7 @@ export default function Header() {
     { href: "/leaderboard", label: "🏆 Top ROI" },
     { href: "/trending", label: "📈 Trending" },
     { href: "/watchlist", label: "★ Watchlist" },
+    { href: "/submissions", label: "📦 Submissions" },
   ];
 
   return (
@@ -51,20 +52,20 @@ export default function Header() {
       <header className="sticky top-0 z-50 bg-[#0a0a0f]/90 backdrop-blur border-b border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
 
-          {/* Logo + Nav */}
+          {/* Logo + Desktop Nav */}
           <div className="flex items-center gap-6">
-            <Link href="/" className="text-xl font-black tracking-tight">
+            <Link href="/" className="text-xl font-black tracking-tight flex-shrink-0">
               <span className="text-white">POKE</span>
               <span className="text-yellow-400">ROI</span>
             </Link>
 
             {/* Desktop nav */}
-            <nav className="hidden sm:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-1">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-mono ${
+                  className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-mono whitespace-nowrap ${
                     pathname === link.href
                       ? "bg-zinc-800 text-white"
                       : "text-zinc-500 hover:text-white"
@@ -87,7 +88,7 @@ export default function Header() {
               }`}
             >
               ⚙️ Fees
-              <span className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">
+              <span className="hidden sm:inline text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">
                 ${totalFixed.toFixed(0)}
               </span>
             </button>
@@ -95,7 +96,7 @@ export default function Header() {
             {/* Mobile menu button */}
             <button
               onClick={() => { setMobileMenuOpen(!mobileMenuOpen); setFeesPanelOpen(false); }}
-              className="sm:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
+              className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
             >
               {mobileMenuOpen ? "✕" : "☰"}
             </button>
@@ -104,7 +105,7 @@ export default function Header() {
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="sm:hidden border-t border-zinc-800 bg-[#0d0d14]/95 backdrop-blur">
+          <div className="md:hidden border-t border-zinc-800 bg-[#0d0d14]/95 backdrop-blur">
             <nav className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-1">
               {navLinks.map((link) => (
                 <Link
