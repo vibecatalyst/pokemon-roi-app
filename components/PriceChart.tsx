@@ -1,6 +1,5 @@
 "use client";
 
-const router = useRouter();
 import {
   ResponsiveContainer,
   LineChart,
@@ -19,15 +18,49 @@ interface ChartPoint {
   raw: number | null;
 }
 
+interface PriceHistoryEntry {
+  average: number;
+  count: number;
+}
+
 interface Props {
-  priceHistory: Record<string, Record<string, { average: number; count: number }>>;
+  priceHistory: Record<string, Record<string, PriceHistoryEntry>>;
   rawPrice: number;
   cardName: string;
+}
+
+interface TooltipPayloadItem {
+  name: string;
+  value: number;
+  color: string;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string;
 }
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-xs font-mono shadow-xl">
+      <p className="text-zinc-400 mb-2">{label}</p>
+      {payload.map((p) =>
+        p.value != null ? (
+          <div key={p.name} className="flex justify-between gap-4">
+            <span style={{ color: p.color }}>{p.name}</span>
+            <span className="text-white font-bold">${p.value.toFixed(2)}</span>
+          </div>
+        ) : null
+      )}
+    </div>
+  );
 }
 
 export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) {
@@ -53,27 +86,6 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
     raw: rawPrice > 0 ? rawPrice : null,
   }));
 
-  const CustomTooltip = ({ active, payload, label }: {
-    active?: boolean;
-    payload?: { name: string; value: number; color: string }[];
-    label?: string;
-  }) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-xs font-mono shadow-xl">
-        <p className="text-zinc-400 mb-2">{label}</p>
-        {payload.map((p) => (
-          p.value != null && (
-            <div key={p.name} className="flex justify-between gap-4">
-              <span style={{ color: p.color }}>{p.name}</span>
-              <span className="text-white font-bold">${p.value.toFixed(2)}</span>
-            </div>
-          )
-        ))}
-      </div>
-    );
-  };
-
   return (
     <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
       <div className="mb-4">
@@ -93,7 +105,7 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
             tick={{ fill: "#71717a", fontSize: 10, fontFamily: "monospace" }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v) => `$${v}`}
+            tickFormatter={(v: number) => `$${v}`}
             width={55}
           />
           <Tooltip content={<CustomTooltip />} />
