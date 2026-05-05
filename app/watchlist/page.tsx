@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { getWatchlist, removeFromWatchlist, WatchlistItem } from "@/lib/watchlist";
 import { useFees } from "@/lib/fees-context";
@@ -17,6 +17,8 @@ function calcROI(item: WatchlistItem, fees: ReturnType<typeof useFees>["fees"]) 
 export default function Watchlist() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("added");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const { fees } = useFees();
   const router = useRouter();
 
@@ -30,9 +32,36 @@ export default function Watchlist() {
     setItems(getWatchlist());
   }
 
+  function toggleSort(key: typeof sortBy) {
+    if (sortBy === key) {
+      setSortDir(sortDir === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(key);
+      setSortDir("desc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const roiA = calcROI(a, fees).roi;
+      const roiB = calcROI(b, fees).roi;
+      const profitA = calcROI(a, fees).profit;
+      const profitB = calcROI(b, fees).profit;
+
+      let diff = 0;
+      if (sortBy === "roi") diff = roiB - roiA;
+      else if (sortBy === "raw") diff = b.rawPrice - a.rawPrice;
+      else if (sortBy === "psa10") diff = b.psa10Price - a.psa10Price;
+      else if (sortBy === "profit") diff = profitB - profitA;
+      else diff = new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
+
+      return sortDir === "desc" ? diff : -diff;
+    });
+  }, [items, sortBy, sortDir, fees]);
+
   function exportToCSV() {
     const headers = ["Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "Total Cost", "Sale Proceeds", "Net Profit", "ROI %", "Added"];
-    const rows = items.map((item) => {
+    const rows = sorted.map((item) => {
       const { profit, roi, totalCosts, saleProceeds } = calcROI(item, fees);
       return [
         item.name,
@@ -58,6 +87,20 @@ export default function Watchlist() {
     URL.revokeObjectURL(url);
   }
 
+  function SortHeader({ label, field }: { label: string; field: typeof sortBy }) {
+    const active = sortBy === field;
+    return (
+      <th
+        onClick={() => toggleSort(field)}
+        className={`text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none ${
+          active ? "text-yellow-400" : "text-zinc-500 hover:text-white"
+        }`}
+      >
+        {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
+      </th>
+    );
+  }
+
   if (!mounted) return null;
 
   return (
@@ -81,12 +124,34 @@ export default function Watchlist() {
             <p className="text-zinc-500 text-sm mt-1">Cards you are tracking for grading opportunities</p>
           </div>
           {items.length > 0 && (
-            <button
-              onClick={exportToCSV}
-              className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm"
-            >
-              Export CSV
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-500 font-mono">SORT</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => { setSortBy(e.target.value as typeof sortBy); setSortDir("desc"); }}
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm outline-none font-mono"
+                >
+                  <option value="added">Date Added</option>
+                  <option value="roi">ROI %</option>
+                  <option value="profit">Net Profit</option>
+                  <option value="raw">Raw Price</option>
+                  <option value="psa10">PSA 10 Price</option>
+                </select>
+                <button
+                  onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
+                  className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2 text-white text-sm transition-colors font-mono"
+                >
+                  {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
+                </button>
+              </div>
+              <button
+                onClick={exportToCSV}
+                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2 rounded-lg transition-colors text-sm"
+              >
+                Export CSV
+              </button>
+            </div>
           )}
         </div>
 
@@ -95,9 +160,9 @@ export default function Watchlist() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {(() => {
               const profitable = items.filter((i) => calcROI(i, fees).profit > 0);
-              const totalInvest = items.reduce((s, i) => s + calcROI(i, fees).totalCosts, 0);
               const totalProfit = items.reduce((s, i) => s + calcROI(i, fees).profit, 0);
               const avgRoi = items.length > 0 ? items.reduce((s, i) => s + calcROI(i, fees).roi, 0) / items.length : 0;
+              const totalInvest = items.reduce((s, i) => s + calcROI(i, fees).totalCosts, 0);
               return (
                 <>
                   <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
@@ -138,25 +203,25 @@ export default function Watchlist() {
           </div>
         )}
 
-        {/* Cards table */}
-        {items.length > 0 && (
+        {/* Table */}
+        {sorted.length > 0 && (
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-zinc-800">
                     <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">RAW</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PSA 10</th>
+                    <SortHeader label="RAW" field="raw" />
+                    <SortHeader label="PSA 10" field="psa10" />
                     <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">TOTAL COST</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PROFIT</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">ROI</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">ADDED</th>
+                    <SortHeader label="PROFIT" field="profit" />
+                    <SortHeader label="ROI" field="roi" />
+                    <SortHeader label="ADDED" field="added" />
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => {
+                  {sorted.map((item) => {
                     const { profit, roi, totalCosts } = calcROI(item, fees);
                     const roiColor = roi > 50 ? "text-emerald-400" : roi > 0 ? "text-yellow-400" : "text-red-400";
                     return (
@@ -208,7 +273,7 @@ export default function Watchlist() {
               </table>
             </div>
             <div className="px-4 py-3 border-t border-zinc-800 text-xs text-zinc-600 font-mono">
-              {items.length} cards · click a row to view full details
+              {sorted.length} cards · click a row to view full details · click column headers to sort
             </div>
           </div>
         )}
