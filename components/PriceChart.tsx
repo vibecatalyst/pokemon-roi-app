@@ -11,13 +11,6 @@ import {
   Legend,
 } from "recharts";
 
-interface ChartPoint {
-  date: string;
-  psa10: number | null;
-  psa9: number | null;
-  raw: number | null;
-}
-
 interface PriceHistoryEntry {
   average: number;
   count: number;
@@ -67,10 +60,11 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
   const psa10History = priceHistory?.psa10 ?? {};
   const psa9History = priceHistory?.psa9 ?? {};
 
-  const allDates = Array.from(
-    new Set([...Object.keys(psa10History), ...Object.keys(psa9History)])
-  ).sort();
+  const psa10Dates = Object.keys(psa10History);
+  const psa9Dates = Object.keys(psa9History);
+  const allDates = Array.from(new Set([...psa10Dates, ...psa9Dates])).sort();
 
+  // Show message if truly no data
   if (allDates.length === 0) {
     return (
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 text-center">
@@ -79,7 +73,7 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
     );
   }
 
-  const data: ChartPoint[] = allDates.map((date) => ({
+  const data = allDates.map((date) => ({
     date: formatDate(date),
     psa10: psa10History[date]?.average ?? null,
     psa9: psa9History[date]?.average ?? null,
@@ -90,9 +84,15 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
     <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
       <div className="mb-4">
         <h3 className="text-sm font-bold text-white">Price History</h3>
-        <p className="text-xs text-zinc-500 mt-0.5">{cardName} — last {allDates.length} data points</p>
+        <p className="text-xs text-zinc-500 mt-0.5">
+          {cardName} — {allDates.length} data points
+        </p>
+        <div className="flex gap-4 mt-2">
+          <span className="text-xs font-mono text-yellow-400">● PSA 10: {psa10Dates.length} points</span>
+          <span className="text-xs font-mono text-blue-400">● PSA 9: {psa9Dates.length} points</span>
+        </div>
       </div>
-      <ResponsiveContainer width="100%" height={280}>
+      <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
           <XAxis
@@ -106,7 +106,7 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => `$${v}`}
-            width={55}
+            width={60}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
@@ -118,9 +118,9 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
             name="PSA 10"
             stroke="#facc15"
             strokeWidth={2}
-            dot={{ fill: "#facc15", r: 3 }}
+            dot={{ fill: "#facc15", r: 4 }}
             connectNulls
-            activeDot={{ r: 5 }}
+            activeDot={{ r: 6 }}
           />
           <Line
             type="monotone"
@@ -128,9 +128,9 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
             name="PSA 9"
             stroke="#60a5fa"
             strokeWidth={2}
-            dot={{ fill: "#60a5fa", r: 3 }}
+            dot={{ fill: "#60a5fa", r: 4 }}
             connectNulls
-            activeDot={{ r: 5 }}
+            activeDot={{ r: 6 }}
           />
           <Line
             type="monotone"
