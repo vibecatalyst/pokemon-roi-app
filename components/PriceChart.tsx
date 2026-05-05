@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -57,6 +58,12 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 }
 
 export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const psa10History = priceHistory?.psa10 ?? {};
   const psa9History = priceHistory?.psa9 ?? {};
 
@@ -64,11 +71,13 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
   const psa9Dates = Object.keys(psa9History);
   const allDates = Array.from(new Set([...psa10Dates, ...psa9Dates])).sort();
 
-  // Show message if truly no data
+  console.log("PriceChart rendering, allDates:", allDates.length, "mounted:", mounted);
+
   if (allDates.length === 0) {
     return (
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 text-center">
         <p className="text-zinc-600 font-mono text-sm">No price history available for this card yet.</p>
+        <p className="text-zinc-700 text-xs mt-1">psa10: {psa10Dates.length} psa9: {psa9Dates.length}</p>
       </div>
     );
   }
@@ -79,6 +88,14 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
     psa9: psa9History[date]?.average ?? null,
     raw: rawPrice > 0 ? rawPrice : null,
   }));
+
+  if (!mounted) {
+    return (
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <p className="text-zinc-600 font-mono text-sm text-center">Loading chart...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">

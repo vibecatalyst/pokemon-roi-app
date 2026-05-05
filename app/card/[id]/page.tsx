@@ -22,11 +22,18 @@ export default function CardDetail() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!id) return;
+    console.log("useEffect running, id:", id);
+    if (!id) {
+      console.log("no id, returning");
+      return;
+    }
     fetch(`/api/card?id=${id}`)
-      .then((r) => r.json())
+      .then((r) => {
+        console.log("fetch status:", r.status);
+        return r.json();
+      })
       .then((json) => {
-        // API returns either a single object or an array
+        console.log("json received:", JSON.stringify(json).slice(0, 200));
         const raw = json.data;
         const cardData = Array.isArray(raw) ? raw[0] : raw;
         if (!cardData) { setError("Card not found."); return; }
@@ -35,9 +42,14 @@ export default function CardDetail() {
 
         const ebay = (cardData.ebay as Record<string, unknown>) ?? {};
         const history = (ebay.priceHistory as Record<string, Record<string, PriceHistoryEntry>>) ?? {};
+        console.log("history keys:", Object.keys(history));
+        console.log("psa10 entries:", Object.keys(history?.psa10 ?? {}));
         setPriceHistory(history);
       })
-      .catch(() => setError("Failed to load card data."))
+      .catch((err) => {
+        console.log("fetch error:", err);
+        setError("Failed to load card data.");
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
