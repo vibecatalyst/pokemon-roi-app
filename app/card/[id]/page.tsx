@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
+import { addToWatchlist, removeFromWatchlist, isInWatchlist } from "@/lib/watchlist";
 import PriceChart from "@/components/PriceChart";
 import CardResult from "@/components/CardResult";
 import Link from "next/link";
@@ -20,38 +21,46 @@ export default function CardDetail() {
   const [priceHistory, setPriceHistory] = useState<Record<string, Record<string, PriceHistoryEntry>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [watched, setWatched] = useState(false);
 
   useEffect(() => {
-    console.log("useEffect running, id:", id);
-    if (!id) {
-      console.log("no id, returning");
-      return;
-    }
+    if (!id) return;
+    setWatched(isInWatchlist(id));
     fetch(`/api/card?id=${id}`)
-      .then((r) => {
-        console.log("fetch status:", r.status);
-        return r.json();
-      })
+      .then((r) => r.json())
       .then((json) => {
-        console.log("json received:", JSON.stringify(json).slice(0, 200));
         const raw = json.data;
         const cardData = Array.isArray(raw) ? raw[0] : raw;
         if (!cardData) { setError("Card not found."); return; }
-
         setCard(mapApiCard(cardData as Record<string, unknown>));
-
         const ebay = (cardData.ebay as Record<string, unknown>) ?? {};
         const history = (ebay.priceHistory as Record<string, Record<string, PriceHistoryEntry>>) ?? {};
-        console.log("history keys:", Object.keys(history));
-        console.log("psa10 entries:", Object.keys(history?.psa10 ?? {}));
         setPriceHistory(history);
       })
-      .catch((err) => {
-        console.log("fetch error:", err);
-        setError("Failed to load card data.");
-      })
+      .catch(() => setError("Failed to load card data."))
       .finally(() => setLoading(false));
   }, [id]);
+
+  function toggleWatchlist() {
+    if (!card) return;
+    if (watched) {
+      removeFromWatchlist(card.tcgPlayerId);
+      setWatched(false);
+    } else {
+      addToWatchlist({
+        tcgPlayerId: card.tcgPlayerId,
+        name: card.name,
+        set: card.set,
+        image: card.image,
+        rawPrice: card.rawPrice,
+        psa10Price: card.psa10Price,
+        rarity: card.rarity,
+        number: card.number,
+        addedAt: new Date().toISOString(),
+      });
+      setWatched(true);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
@@ -62,9 +71,23 @@ export default function CardDetail() {
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
-        <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">
-          ← Back to Search
-        </Link>
+        <div className="flex items-center justify-between mb-6">
+          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">
+            ← Back to Search
+          </Link>
+          {card && (
+            <button
+              onClick={toggleWatchlist}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-mono transition-colors ${
+                watched
+                  ? "bg-blue-500/20 border-blue-500/40 text-blue-400 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400"
+                  : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400"
+              }`}
+            >
+              {watched ? "★ Watching" : "☆ Add to Watchlist"}
+            </button>
+          )}
+        </div>
 
         {loading && (
           <div className="text-center py-20">
@@ -80,7 +103,7 @@ export default function CardDetail() {
         )}
 
         {card && (
-          <div className="mt-6 space-y-6">
+          <div className="space-y-6">
             <CardResult card={card} fees={fees} />
             <PriceChart
               priceHistory={priceHistory}
