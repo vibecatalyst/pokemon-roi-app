@@ -38,34 +38,48 @@ export default function Header() {
 
   const totalFixed = fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
 
+  const navLinks = [
+    { href: "/", label: "Search" },
+    { href: "/leaderboard", label: "🏆 Top ROI" },
+    { href: "/trending", label: "📈 Trending" },
+  ];
+
   return (
     <>
       <header className="sticky top-0 z-50 bg-[#0a0a0f]/90 backdrop-blur border-b border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+
+          {/* Logo + Nav */}
           <div className="flex items-center gap-6">
             <Link href="/" className="text-xl font-black tracking-tight">
               <span className="text-white">POKE</span>
               <span className="text-yellow-400">ROI</span>
             </Link>
             <nav className="flex items-center gap-1">
-              <Link
-                href="/"
-                className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-mono ${pathname === "/" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-white"}`}
-              >
-                Search
-              </Link>
-              <Link
-                href="/leaderboard"
-                className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-mono ${pathname === "/leaderboard" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-white"}`}
-              >
-                🏆 Top ROI
-              </Link>
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-mono ${
+                    pathname === link.href
+                      ? "bg-zinc-800 text-white"
+                      : "text-zinc-500 hover:text-white"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
             </nav>
           </div>
 
+          {/* Fees button */}
           <button
             onClick={() => setFeesPanelOpen(!feesPanelOpen)}
-            className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors font-mono ${feesPanelOpen ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-400" : "border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600"}`}
+            className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors font-mono ${
+              feesPanelOpen
+                ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-400"
+                : "border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600"
+            }`}
           >
             ⚙️ Fees
             <span className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">
@@ -79,6 +93,7 @@ export default function Header() {
           <div className="border-t border-zinc-800 bg-[#0d0d14]/95 backdrop-blur">
             <div className="max-w-7xl mx-auto px-4 py-4">
               <div className="flex flex-wrap gap-4 items-end">
+
                 <div>
                   <p className="text-xs text-zinc-600 font-mono uppercase tracking-widest mb-2">Grading Costs</p>
                   <div className="flex gap-3">
@@ -87,6 +102,7 @@ export default function Header() {
                     <FeeInput label="Shipping Back" value={fees.shippingBack} onChange={(v) => update("shippingBack", v)} prefix="$" />
                   </div>
                 </div>
+
                 <div>
                   <p className="text-xs text-zinc-600 font-mono uppercase tracking-widest mb-2">Selling Costs</p>
                   <div className="flex gap-3">
@@ -94,16 +110,25 @@ export default function Header() {
                     <FeeInput label="Buying Premium" value={fees.buyingFeePercent} onChange={(v) => update("buyingFeePercent", v)} suffix="%" step={0.5} />
                   </div>
                 </div>
+
                 <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl px-4 py-3 text-center">
                   <p className="text-xs text-zinc-500 font-mono">Total Fixed</p>
                   <p className="text-2xl font-black text-white font-mono">${totalFixed.toFixed(2)}</p>
                   <p className="text-xs text-zinc-600">+{fees.ebayFeePercent}% on sale</p>
                 </div>
+
                 <button
                   onClick={() => setFees({ gradingFee: 25, shippingToGrader: 8, shippingBack: 8, ebayFeePercent: 13.25, buyingFeePercent: 0 })}
-                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors font-mono underline"
+                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors font-mono underline self-end pb-1"
                 >
                   Reset to defaults
+                </button>
+
+                <button
+                  onClick={() => setFeesPanelOpen(false)}
+                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors font-mono self-end pb-1 ml-auto"
+                >
+                  Close ✕
                 </button>
               </div>
             </div>
