@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import SearchBar from "@/components/SearchBar";
-import CardResult from "@/components/CardResult";
 import { CardData } from "@/lib/types";
 import { useFees } from "@/lib/fees-context";
 
 export default function Home() {
   const [results, setResults] = useState<CardData[]>([]);
-  const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const { fees } = useFees();
+  const router = useRouter();
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
@@ -22,6 +22,8 @@ export default function Home() {
       </div>
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
+
+        {/* Hero */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 bg-yellow-400/10 border border-yellow-400/20 rounded-full px-4 py-1.5 mb-6">
             <span className="text-yellow-400 text-xs font-mono tracking-widest uppercase">PSA Grading ROI Calculator</span>
@@ -35,42 +37,55 @@ export default function Home() {
           </p>
         </div>
 
-        <SearchBar onResults={setResults} onSelect={setSelectedCard} setLoading={setLoading} setError={setError} loading={loading} />
+        {/* Search */}
+        <SearchBar
+          onResults={setResults}
+          onSelect={() => {}}
+          setLoading={setLoading}
+          setError={setError}
+          loading={loading}
+        />
 
         {error && (
-          <div className="mt-4 text-center text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-3">{error}</div>
+          <div className="mt-4 text-center text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+            {error}
+          </div>
         )}
 
-        {results.length > 0 && !selectedCard && (
+        {/* Results grid */}
+        {results.length > 0 && (
           <div className="mt-8">
-            <p className="text-zinc-500 text-sm mb-4 font-mono">{results.length} cards found - select one to calculate ROI</p>
+            <p className="text-zinc-500 text-sm mb-4 font-mono">
+              {results.length} cards found — click a card to see ROI &amp; price history
+            </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {results.map((card, idx) => (
                 <button
                   key={`${card.id}-${idx}`}
-                  onClick={() => setSelectedCard(card)}
+                  onClick={() => router.push(`/card/${card.tcgPlayerId}`)}
                   className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-yellow-400/40 rounded-xl p-3 text-left transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
                 >
-                  {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />}
+                  {card.image && (
+                    <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />
+                  )}
                   <p className="text-sm font-semibold text-white truncate">{card.name}</p>
                   <p className="text-xs text-zinc-500 truncate">{card.set}</p>
-                  {card.rawPrice > 0 && <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>}
+                  {card.rawPrice > 0 && (
+                    <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl">
+                    <span className="text-xs text-white font-mono bg-yellow-400/20 border border-yellow-400/30 px-2 py-1 rounded-lg">
+                      View ROI →
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {selectedCard && (
-          <div className="mt-8 space-y-6">
-            <button onClick={() => setSelectedCard(null)} className="text-zinc-500 hover:text-white text-sm flex items-center gap-2 transition-colors">
-              ← Back to results
-            </button>
-            <CardResult card={selectedCard} fees={fees} />
-          </div>
-        )}
-
-        {!loading && results.length === 0 && !selectedCard && (
+        {/* Empty state */}
+        {!loading && results.length === 0 && (
           <div className="mt-16 text-center">
             <div className="text-6xl mb-4">⚡</div>
             <p className="text-zinc-600 font-mono text-sm">Search for a card to get started</p>
