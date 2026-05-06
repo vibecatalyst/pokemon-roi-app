@@ -9,13 +9,25 @@ import Link from "next/link";
 
 function calcProfit(card: CardData, fees: ReturnType<typeof useFees>["fees"]) {
   const totalCosts = card.rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
-  const saleProceeds = card.psa10Price * (1 - fees.ebayFeePercent / 100);
-  const profit = saleProceeds - totalCosts;
+  const saleProceeds10 = card.psa10Price * (1 - fees.ebayFeePercent / 100);
+  const profit = saleProceeds10 - totalCosts;
   const roi = totalCosts > 0 ? (profit / totalCosts) * 100 : 0;
-  return { profit, roi, totalCosts, saleProceeds };
+  const psa9Price = card.psa9Price ?? 0;
+  const saleProceeds9 = psa9Price * (1 - fees.ebayFeePercent / 100);
+  const profit9 = saleProceeds9 - totalCosts;
+  const roi9 = totalCosts > 0 ? (profit9 / totalCosts) * 100 : 0;
+  return { profit, roi, totalCosts, saleProceeds: saleProceeds10, profit9, roi9, psa9Price };
 }
 
-type EnrichedCard = CardData & { profit: number; roi: number; totalCosts: number; saleProceeds: number };
+type EnrichedCard = CardData & {
+  profit: number;
+  roi: number;
+  totalCosts: number;
+  saleProceeds: number;
+  profit9: number;
+  roi9: number;
+  psa9Price: number;
+};
 
 function LeaderboardInner() {
   const { fees } = useFees();
@@ -29,7 +41,9 @@ function LeaderboardInner() {
   const [setsLoading, setSetsLoading] = useState(true);
   const [error, setError] = useState("");
   const [rarityFilter, setRarityFilter] = useState(searchParams.get("rarity") ?? "All");
-  const [sortBy, setSortBy] = useState<"roi" | "profit" | "psa10" | "raw">((searchParams.get("sort") as "roi" | "profit" | "psa10" | "raw") ?? "roi");
+  const [sortBy, setSortBy] = useState<"roi" | "profit" | "psa10" | "raw" | "roi9" | "profit9">(
+    (searchParams.get("sort") as "roi" | "profit" | "psa10" | "raw" | "roi9" | "profit9") ?? "roi"
+  );
   const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
   const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "1") || 1);
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
@@ -123,18 +137,23 @@ function LeaderboardInner() {
         if (sortBy === "roi") diff = b.roi - a.roi;
         else if (sortBy === "profit") diff = b.profit - a.profit;
         else if (sortBy === "psa10") diff = b.psa10Price - a.psa10Price;
+        else if (sortBy === "roi9") diff = b.roi9 - a.roi9;
+        else if (sortBy === "profit9") diff = b.profit9 - a.profit9;
         else diff = b.rawPrice - a.rawPrice;
         return sortDir === "desc" ? diff : -diff;
       });
   }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw]);
 
   function exportToCSV() {
-    const headers = ["Rank", "Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "Total Cost", "Sale Proceeds", "Net Profit", "ROI %", "Multiple", "Image URL"];
+    const headers = ["Rank", "Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "PSA 9 Price", "Total Cost", "Sale Proceeds", "Net Profit", "ROI %", "PSA 9 Profit", "PSA 9 ROI %", "Multiple", "Image URL"];
     const rows = filtered.map((card, idx) => [
       idx + 1, card.name, card.set, card.rarity, card.number,
       card.rawPrice.toFixed(2), card.psa10Price.toFixed(2),
+      card.psa9Price > 0 ? card.psa9Price.toFixed(2) : "",
       card.totalCosts.toFixed(2), card.saleProceeds.toFixed(2),
       card.profit.toFixed(2), card.roi.toFixed(1) + "%",
+      card.psa9Price > 0 ? card.profit9.toFixed(2) : "",
+      card.psa9Price > 0 ? card.roi9.toFixed(1) + "%" : "",
       (card.psa10Price / card.rawPrice).toFixed(2) + "x",
       card.image ?? "",
     ]);
@@ -216,8 +235,10 @@ function LeaderboardInner() {
                 onChange={(e) => handleSortByChange(e.target.value as typeof sortBy)}
                 className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
               >
-                <option value="roi">ROI %</option>
-                <option value="profit">Net Profit</option>
+                <option value="roi">ROI % (PSA 10)</option>
+                <option value="profit">Net Profit (PSA 10)</option>
+                <option value="roi9">ROI % (PSA 9)</option>
+                <option value="profit9">Net Profit (PSA 9)</option>
                 <option value="psa10">PSA 10 Price</option>
                 <option value="raw">Raw Price</option>
               </select>
@@ -299,16 +320,19 @@ function LeaderboardInner() {
                     <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
                     <SortTh label="RAW" field="raw" />
                     <SortTh label="PSA 10" field="psa10" />
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">TOTAL COST</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PROCEEDS</th>
-                    <SortTh label="PROFIT" field="profit" />
-                    <SortTh label="ROI" field="roi" />
+                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PSA 9</th>
+                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">COST</th>
+                    <SortTh label="P10 PROFIT" field="profit" />
+                    <SortTh label="P10 ROI" field="roi" />
+                    <SortTh label="P9 PROFIT" field="profit9" />
+                    <SortTh label="P9 ROI" field="roi9" />
                     <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">MULT</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((card, idx) => {
-                    const roiColor = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
+                    const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
+                    const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
                     return (
                       <tr
                         key={card.id}
@@ -327,13 +351,21 @@ function LeaderboardInner() {
                         </td>
                         <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">${card.rawPrice.toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">${card.psa10Price.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
+                          {card.psa9Price > 0 ? "$" + card.psa9Price.toFixed(2) : "—"}
+                        </td>
                         <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.totalCosts.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.saleProceeds.toFixed(2)}</td>
-                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roiColor}>
+                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
                           {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
                         </td>
-                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roiColor}>
+                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
                           {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
+                        </td>
+                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
+                          {card.psa9Price > 0 ? (card.profit9 >= 0 ? "+" : "") + "$" + card.profit9.toFixed(2) : "—"}
+                        </td>
+                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
+                          {card.psa9Price > 0 ? (card.roi9 >= 0 ? "+" : "") + card.roi9.toFixed(0) + "%" : "—"}
                         </td>
                         <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">
                           {(card.psa10Price / card.rawPrice).toFixed(1)}x
