@@ -9,19 +9,15 @@ import PriceChart from "@/components/PriceChart";
 import CardResult from "@/components/CardResult";
 import Link from "next/link";
 
-interface PriceHistoryEntry {
-  average: number;
-  count: number;
-}
-
 type MappedCard = ReturnType<typeof mapApiCard>;
+type PriceHistory = Record<string, Record<string, { average: number; count: number }>>;
 
 export default function CardDetail() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
   const { fees } = useFees();
   const [card, setCard] = useState<MappedCard | null>(null);
-  const [priceHistory, setPriceHistory] = useState<Record<string, Record<string, PriceHistoryEntry>>>({});
+  const [priceHistory, setPriceHistory] = useState<PriceHistory>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [watched, setWatched] = useState(false);
@@ -37,7 +33,7 @@ export default function CardDetail() {
         if (!cardData) { setError("Card not found."); return; }
         setCard(mapApiCard(cardData as Record<string, unknown>));
         const ebay = (cardData.ebay as Record<string, unknown>) ?? {};
-        const history = (ebay.priceHistory as Record<string, Record<string, PriceHistoryEntry>>) ?? {};
+        const history = (ebay.priceHistory as PriceHistory) ?? {};
         setPriceHistory(history);
       })
       .catch(() => setError("Failed to load card data."))
@@ -66,31 +62,26 @@ export default function CardDetail() {
     }
   }
 
-  const psaPopUrl = card
-    ? "https://www.psacard.com/pop/trading-card-games/0/pokemon?q=" + encodeURIComponent(card.name)
-    : "";
+  function openPsaPop() {
+    if (!card) return;
+    window.open("https://www.psacard.com/pop/trading-card-games/0/pokemon?q=" + encodeURIComponent(card.name), "_blank");
+  }
 
-  const tcgPlayerUrl = card
-    ? "https://www.tcgplayer.com/product/" + card.tcgPlayerId
-    : "";
+  function openTcgPlayer() {
+    if (!card) return;
+    window.open("https://www.tcgplayer.com/product/" + card.tcgPlayerId, "_blank");
+  }
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-yellow-400/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-red-500/5 rounded-full blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-[0.015]"
-          style={{
-            backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
-            backgroundSize: "32px 32px",
-          }}
-        />
+        <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
 
-        {/* Top bar */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">
             Back to Search
@@ -98,44 +89,34 @@ export default function CardDetail() {
 
           <div className="flex items-center gap-2 flex-wrap">
             {card && (
-              
-                href={psaPopUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={openPsaPop}
                 className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
               >
                 PSA Pop Report
-              </a>
+              </button>
             )}
 
             {card && (
-              
-                href={tcgPlayerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={openTcgPlayer}
                 className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
               >
                 TCGPlayer
-              </a>
+              </button>
             )}
 
             {card && (
               <button
                 onClick={toggleWatchlist}
-                className={
-                  "flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-mono transition-colors " +
-                  (watched
-                    ? "bg-blue-500/20 border-blue-500/40 text-blue-400 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400")
-                }
+                className={"flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-mono transition-colors " + (watched ? "bg-blue-500/20 border-blue-500/40 text-blue-400" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400")}
               >
-                {watched ? "Watching" : "Add to Watchlist"}
+                {watched ? "★ Watching" : "☆ Add to Watchlist"}
               </button>
             )}
           </div>
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">⚡</div>
@@ -143,22 +124,16 @@ export default function CardDetail() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="mt-4 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">
             {error}
           </div>
         )}
 
-        {/* Card content */}
         {card && (
           <div className="space-y-6">
             <CardResult card={card} fees={fees} />
-            <PriceChart
-              priceHistory={priceHistory}
-              rawPrice={card.rawPrice}
-              cardName={card.name}
-            />
+            <PriceChart priceHistory={priceHistory} rawPrice={card.rawPrice} cardName={card.name} />
           </div>
         )}
       </div>
