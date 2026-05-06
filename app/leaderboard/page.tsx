@@ -31,7 +31,7 @@ function LeaderboardInner() {
   const [rarityFilter, setRarityFilter] = useState(searchParams.get("rarity") ?? "All");
   const [sortBy, setSortBy] = useState<"roi" | "profit" | "psa10" | "raw">((searchParams.get("sort") as "roi" | "profit" | "psa10" | "raw") ?? "roi");
   const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
-  const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "5") || 5);
+  const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "1") || 1);
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
 
   function updateUrl(params: Record<string, string>) {
