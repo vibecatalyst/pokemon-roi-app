@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useFees } from "@/lib/fees-context";
+import { useFees, PSA_TIERS } from "@/lib/fees-context";
 
 function FeeInput({ label, value, onChange, prefix, suffix, step = 0.01 }: {
   label: string; value: number; onChange: (v: number) => void;
@@ -31,7 +31,7 @@ function FeeInput({ label, value, onChange, prefix, suffix, step = 0.01 }: {
 export default function Header() {
   const [feesPanelOpen, setFeesPanelOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { fees, setFees } = useFees();
+  const { fees, setFees, psaTier, setPsaTier } = useFees();
   const pathname = usePathname();
 
   const update = (key: keyof typeof fees, val: number) =>
@@ -53,7 +53,6 @@ export default function Header() {
       <header className="sticky top-0 z-50 bg-[#0a0a0f]/90 backdrop-blur border-b border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
 
-          {/* Logo + Desktop Nav */}
           <div className="flex items-center gap-6">
             <Link href="/" className="text-xl font-black tracking-tight flex-shrink-0">
               <span className="text-white">POKE</span>
@@ -75,8 +74,6 @@ export default function Header() {
           </div>
 
           <div className="flex items-center gap-2">
-
-            {/* Fees button */}
             <button
               onClick={() => { setFeesPanelOpen(!feesPanelOpen); setMobileMenuOpen(false); }}
               className={"flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors font-mono " +
@@ -86,11 +83,10 @@ export default function Header() {
             >
               ⚙️ Fees
               <span className="hidden sm:inline text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">
-                ${totalFixed.toFixed(0)}
+                {psaTier} · ${fees.gradingFee.toFixed(2)}
               </span>
             </button>
 
-            {/* Mobile menu button */}
             <button
               onClick={() => { setMobileMenuOpen(!mobileMenuOpen); setFeesPanelOpen(false); }}
               className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
@@ -119,12 +115,33 @@ export default function Header() {
           </div>
         )}
 
-        {/* Fee panel dropdown */}
+        {/* Fee panel */}
         {feesPanelOpen && (
           <div className="border-t border-zinc-800 bg-[#0d0d14]/95 backdrop-blur">
-            <div className="max-w-7xl mx-auto px-4 py-4">
-              <div className="flex flex-wrap gap-4 items-end">
+            <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
 
+              {/* PSA Tier selector */}
+              <div>
+                <p className="text-xs text-zinc-600 font-mono uppercase tracking-widest mb-2">PSA Submission Tier</p>
+                <div className="flex flex-wrap gap-2">
+                  {PSA_TIERS.map((tier) => (
+                    <button
+                      key={tier.label}
+                      onClick={() => setPsaTier(tier.label)}
+                      className={"flex flex-col px-3 py-2 rounded-lg border text-left transition-colors " +
+                        (psaTier === tier.label
+                          ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-400"
+                          : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600")}
+                    >
+                      <span className="text-sm font-bold font-mono">{tier.label}</span>
+                      <span className="text-xs opacity-70">{tier.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fee inputs */}
+              <div className="flex flex-wrap gap-4 items-end">
                 <div>
                   <p className="text-xs text-zinc-600 font-mono uppercase tracking-widest mb-2">Grading Costs</p>
                   <div className="flex flex-wrap gap-3">
@@ -150,7 +167,7 @@ export default function Header() {
 
                 <div className="flex flex-col gap-2 self-end">
                   <button
-                    onClick={() => setFees({ gradingFee: 25, shippingToGrader: 8, shippingBack: 8, ebayFeePercent: 13.25, buyingFeePercent: 0 })}
+                    onClick={() => { setPsaTier("Value"); setFees({ gradingFee: 32.99, shippingToGrader: 8, shippingBack: 8, ebayFeePercent: 13.25, buyingFeePercent: 0 }); }}
                     className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors font-mono underline"
                   >
                     Reset to defaults
