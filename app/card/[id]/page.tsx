@@ -29,7 +29,7 @@ export default function CardDetail() {
   useEffect(() => {
     if (!id) return;
     setWatched(isInWatchlist(id));
-    fetch(`/api/card?id=${id}`)
+    fetch("/api/card?id=" + id)
       .then((r) => r.json())
       .then((json) => {
         const raw = json.data;
@@ -66,12 +66,26 @@ export default function CardDetail() {
     }
   }
 
+  const psaPopUrl = card
+    ? "https://www.psacard.com/pop/trading-card-games/0/pokemon?q=" + encodeURIComponent(card.name)
+    : "";
+
+  const tcgPlayerUrl = card
+    ? "https://www.tcgplayer.com/product/" + card.tcgPlayerId
+    : "";
+
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-yellow-400/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-red-500/5 rounded-full blur-3xl" />
-        <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
+        <div
+          className="absolute inset-0 opacity-[0.015]"
+          style={{
+            backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
+            backgroundSize: "32px 32px",
+          }}
+        />
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
@@ -79,45 +93,43 @@ export default function CardDetail() {
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">
-            ← Back to Search
+            Back to Search
           </Link>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* PSA Pop Report link */}
             {card && (
               
-                href={`https://www.psacard.com/pop/trading-card-games/0/pokemon?q=${encodeURIComponent(card.name)}`}
+                href={psaPopUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
               >
-                📊 PSA Pop Report
+                PSA Pop Report
               </a>
             )}
 
-            {/* TCGPlayer link */}
             {card && (
               
-                href={`https://www.tcgplayer.com/product/${card.tcgPlayerId}`}
+                href={tcgPlayerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
               >
-                🛒 TCGPlayer
+                TCGPlayer
               </a>
             )}
 
-            {/* Watchlist button */}
             {card && (
               <button
                 onClick={toggleWatchlist}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-mono transition-colors ${
-                  watched
+                className={
+                  "flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-mono transition-colors " +
+                  (watched
                     ? "bg-blue-500/20 border-blue-500/40 text-blue-400 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400"
-                }`}
+                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400")
+                }
               >
-                {watched ? "★ Watching" : "☆ Add to Watchlist"}
+                {watched ? "Watching" : "Add to Watchlist"}
               </button>
             )}
           </div>
