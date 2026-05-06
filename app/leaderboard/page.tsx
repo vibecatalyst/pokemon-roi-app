@@ -36,7 +36,12 @@ function LeaderboardInner() {
   const searchParams = useSearchParams();
 
   const [sets, setSets] = useState<{ name: string; id: string }[]>([]);
-  const [selectedSet, setSelectedSet] = useState(searchParams.get("set") ?? "");
+  const [selectedSet, setSelectedSet] = useState(() => {
+    const fromUrl = searchParams.get("set");
+    if (fromUrl) return fromUrl;
+    if (typeof window !== "undefined") return localStorage.getItem("pokeroi-last-set") ?? "";
+    return "";
+  });
   const [cards, setCards] = useState<CardData[]>([]);
   const [loading, setLoading] = useState(false);
   const [setsLoading, setSetsLoading] = useState(true);
@@ -71,8 +76,13 @@ function LeaderboardInner() {
   }, []);
 
   useEffect(() => {
-    const setFromUrl = searchParams.get("set");
-    if (setFromUrl) fetchSetCards(setFromUrl);
+    const fromUrl = searchParams.get("set");
+    const savedSet = typeof window !== "undefined" ? localStorage.getItem("pokeroi-last-set") : null;
+    const setToLoad = fromUrl ?? savedSet;
+    if (setToLoad) {
+      setSelectedSet(setToLoad);
+      fetchSetCards(setToLoad);
+    }
   }, []);
 
   async function fetchSetCards(setName: string) {
@@ -86,7 +96,6 @@ function LeaderboardInner() {
       const raw = json.data ?? [];
       const mapped = raw.map(mapApiCard);
       setCards(mapped);
-      // Update watched state for all cards
       const watched = new Set<string>();
       mapped.forEach((c: CardData) => {
         if (isInWatchlist(c.tcgPlayerId)) watched.add(c.tcgPlayerId);
@@ -99,32 +108,13 @@ function LeaderboardInner() {
     }
   }
 
-  function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
-    e.stopPropagation();
-    if (watchedIds.has(card.tcgPlayerId)) {
-      removeFromWatchlist(card.tcgPlayerId);
-      setWatchedIds(prev => { const next = new Set(prev); next.delete(card.tcgPlayerId); return next; });
-    } else {
-      addToWatchlist({
-        tcgPlayerId: card.tcgPlayerId,
-        name: card.name,
-        set: card.set,
-        image: card.image,
-        rawPrice: card.rawPrice,
-        psa10Price: card.psa10Price,
-        psa9Price: card.psa9Price ?? 0,
-        rarity: card.rarity,
-        number: card.number,
-        addedAt: new Date().toISOString(),
-      });
-      setWatchedIds(prev => new Set(prev).add(card.tcgPlayerId));
-    }
-  }
-
   function handleSetChange(setName: string) {
     setSelectedSet(setName);
     updateUrl({ set: setName });
-    if (setName) fetchSetCards(setName);
+    if (setName) {
+      localStorage.setItem("pokeroi-last-set", setName);
+      fetchSetCards(setName);
+    }
   }
 
   function handleRarityChange(rarity: string) {
@@ -151,6 +141,28 @@ function LeaderboardInner() {
   function handleMaxRawChange(val: number | typeof Infinity) {
     setMaxRaw(val);
     updateUrl({ max: val === Infinity ? "" : String(val) });
+  }
+
+  function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
+    e.stopPropagation();
+    if (watchedIds.has(card.tcgPlayerId)) {
+      removeFromWatchlist(card.tcgPlayerId);
+      setWatchedIds(prev => { const next = new Set(prev); next.delete(card.tcgPlayerId); return next; });
+    } else {
+      addToWatchlist({
+        tcgPlayerId: card.tcgPlayerId,
+        name: card.name,
+        set: card.set,
+        image: card.image,
+        rawPrice: card.rawPrice,
+        psa10Price: card.psa10Price,
+        psa9Price: card.psa9Price ?? 0,
+        rarity: card.rarity,
+        number: card.number,
+        addedAt: new Date().toISOString(),
+      });
+      setWatchedIds(prev => new Set(prev).add(card.tcgPlayerId));
+    }
   }
 
   const rarities = useMemo(() => {
@@ -246,7 +258,7 @@ function LeaderboardInner() {
             <span className="text-yellow-400">ROI</span>
             <span className="text-white"> CARDS</span>
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click any row to view details · ☆ to watchlist</p>
+          <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click row for details · ☆ to watchlist</p>
         </div>
 
         {/* Controls */}
@@ -413,6 +425,7 @@ function LeaderboardInner() {
           </div>
         )}
 
+        {/* Table */}
         {filtered.length > 0 && (
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
@@ -445,17 +458,17 @@ function LeaderboardInner() {
                         className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                       >
                         <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
-
-                        {/* Watchlist star */}
                         <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
                           <button
-                            className={"text-lg transition-colors " + (isWatched ? "text-blue-400 hover:text-red-400" : "text-zinc-700 hover:text-blue-400")}
+                            className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
+                              (isWatched
+                                ? "bg-blue-500 text-white hover:bg-red-500"
+                                : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
                             title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
                           >
                             {isWatched ? "★" : "☆"}
                           </button>
                         </td>
-
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {card.image && <img src={card.image} alt={card.name} className="w-10 rounded" />}
@@ -494,7 +507,7 @@ function LeaderboardInner() {
             </div>
             <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-600 font-mono">
-                {filtered.length} cards · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total · ☆ to watchlist · click row for details
+                {filtered.length} cards · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total · click row for details
               </span>
               <button
                 onClick={exportToCSV}
