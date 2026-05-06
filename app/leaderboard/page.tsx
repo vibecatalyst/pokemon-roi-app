@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { CardData } from "@/lib/types";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
@@ -18,6 +19,7 @@ type EnrichedCard = CardData & { profit: number; roi: number; totalCosts: number
 
 export default function Leaderboard() {
   const { fees } = useFees();
+  const router = useRouter();
   const [sets, setSets] = useState<{ name: string; id: string }[]>([]);
   const [selectedSet, setSelectedSet] = useState("");
   const [cards, setCards] = useState<CardData[]>([]);
@@ -46,7 +48,7 @@ export default function Leaderboard() {
     setError("");
     setCards([]);
     try {
-      const res = await fetch(`/api/set-cards?set=${encodeURIComponent(setName)}`);
+      const res = await fetch("/api/set-cards?set=" + encodeURIComponent(setName));
       const json = await res.json();
       if (json.error) { setError(json.message ?? json.error); return; }
       const raw = json.data ?? [];
@@ -100,9 +102,24 @@ export default function Leaderboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${selectedSet}-ROI.csv`;
+    a.download = selectedSet + "-ROI.csv";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function SortTh({ label, field }: { label: string; field: typeof sortBy }) {
+    const active = sortBy === field;
+    return (
+      <th
+        onClick={() => {
+          if (sortBy === field) setSortDir(sortDir === "desc" ? "asc" : "desc");
+          else { setSortBy(field); setSortDir("desc"); }
+        }}
+        className={"text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none " + (active ? "text-yellow-400" : "text-zinc-500 hover:text-white")}
+      >
+        {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
+      </th>
+    );
   }
 
   return (
@@ -117,19 +134,18 @@ export default function Leaderboard() {
 
         {/* Header */}
         <div className="mb-8">
-          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Search</Link>
+          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
           <h1 className="text-4xl font-black mt-2">
             <span className="text-white">TOP </span>
             <span className="text-yellow-400">ROI</span>
             <span className="text-white"> CARDS</span>
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set</p>
+          <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click any card to see full details</p>
         </div>
 
         {/* Controls */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
 
-          {/* Set selector */}
           <div className="flex-1 min-w-48">
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
             <select
@@ -143,7 +159,6 @@ export default function Leaderboard() {
             </select>
           </div>
 
-          {/* Rarity */}
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">RARITY</label>
             <select
@@ -155,13 +170,12 @@ export default function Leaderboard() {
             </select>
           </div>
 
-          {/* Sort */}
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">SORT BY</label>
             <div className="flex gap-2">
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as "roi" | "profit" | "psa10" | "raw")}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                 className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
               >
                 <option value="roi">ROI %</option>
@@ -172,14 +186,12 @@ export default function Leaderboard() {
               <button
                 onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
                 className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2.5 text-white text-sm transition-colors font-mono"
-                title={sortDir === "desc" ? "Descending" : "Ascending"}
               >
                 {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
               </button>
             </div>
           </div>
 
-          {/* Raw price range */}
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE RANGE ($)</label>
             <div className="flex items-center gap-2">
@@ -203,7 +215,6 @@ export default function Leaderboard() {
             </div>
           </div>
 
-          {/* Export */}
           <div className="flex items-end">
             <button
               onClick={exportToCSV}
@@ -252,32 +263,12 @@ export default function Leaderboard() {
                   <tr className="border-b border-zinc-800">
                     <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8">#</th>
                     <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
-                    <th
-                      onClick={() => { setSortBy("raw"); setSortDir(sortBy === "raw" && sortDir === "desc" ? "asc" : "desc"); }}
-                      className="text-right text-xs text-zinc-500 font-mono px-4 py-3 cursor-pointer hover:text-white transition-colors"
-                    >
-                      RAW {sortBy === "raw" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-                    </th>
-                    <th
-                      onClick={() => { setSortBy("psa10"); setSortDir(sortBy === "psa10" && sortDir === "desc" ? "asc" : "desc"); }}
-                      className="text-right text-xs text-zinc-500 font-mono px-4 py-3 cursor-pointer hover:text-white transition-colors"
-                    >
-                      PSA 10 {sortBy === "psa10" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-                    </th>
+                    <SortTh label="RAW" field="raw" />
+                    <SortTh label="PSA 10" field="psa10" />
                     <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">TOTAL COST</th>
                     <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PROCEEDS</th>
-                    <th
-                      onClick={() => { setSortBy("profit"); setSortDir(sortBy === "profit" && sortDir === "desc" ? "asc" : "desc"); }}
-                      className="text-right text-xs text-zinc-500 font-mono px-4 py-3 cursor-pointer hover:text-white transition-colors"
-                    >
-                      PROFIT {sortBy === "profit" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-                    </th>
-                    <th
-                      onClick={() => { setSortBy("roi"); setSortDir(sortBy === "roi" && sortDir === "desc" ? "asc" : "desc"); }}
-                      className="text-right text-xs text-zinc-500 font-mono px-4 py-3 cursor-pointer hover:text-white transition-colors"
-                    >
-                      ROI {sortBy === "roi" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-                    </th>
+                    <SortTh label="PROFIT" field="profit" />
+                    <SortTh label="ROI" field="roi" />
                     <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">MULT</th>
                   </tr>
                 </thead>
@@ -285,7 +276,11 @@ export default function Leaderboard() {
                   {filtered.map((card, idx) => {
                     const roiColor = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
                     return (
-                      <tr key={card.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                      <tr
+                        key={card.id}
+                        onClick={() => router.push("/card/" + card.tcgPlayerId)}
+                        className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                      >
                         <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
@@ -300,10 +295,10 @@ export default function Leaderboard() {
                         <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">${card.psa10Price.toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.totalCosts.toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.saleProceeds.toFixed(2)}</td>
-                        <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${roiColor}`}>
+                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roiColor}>
                           {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
                         </td>
-                        <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${roiColor}`}>
+                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roiColor}>
                           {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
                         </td>
                         <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">
@@ -317,7 +312,7 @@ export default function Leaderboard() {
             </div>
             <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-600 font-mono">
-                {filtered.length} cards shown · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total in set
+                {filtered.length} cards shown · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total in set · click any row to view full details
               </span>
               <button
                 onClick={exportToCSV}
