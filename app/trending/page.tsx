@@ -259,23 +259,31 @@ export default function Trending() {
                   onClick={() => router.push(cardUrl(card.tcgPlayerId))}
                   className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-2xl overflow-hidden transition-all cursor-pointer hover:scale-[1.02] hover:bg-zinc-800/60"
                 >
+                  {/* Image with overlays */}
                   <div className="relative">
                     {card.image && (
                       <img src={card.image} alt={card.name} className="w-full object-cover" />
                     )}
-                    <div className={"absolute top-2 right-2 text-xs font-bold px-2 py-1 rounded-full border " + trend.bg + " " + trend.color}>
+
+                    {/* Trend badge — top right */}
+                    <div className={"absolute top-2 right-2 text-xs font-bold px-2 py-1 rounded-full border backdrop-blur-sm " + trend.bg + " " + trend.color}>
                       {trend.label}
                     </div>
-                    {/* Watchlist star */}
+
+                    {/* Watchlist star — top left with high contrast */}
                     <button
                       onClick={(e) => toggleWatch(e, card)}
-                      className={"absolute top-2 left-2 text-xl transition-colors px-1 " + (isWatched ? "text-blue-400 hover:text-red-400" : "text-zinc-600 hover:text-blue-400")}
                       title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
+                      className={"absolute top-2 left-2 w-8 h-8 flex items-center justify-center rounded-full text-base font-bold transition-all shadow-lg " +
+                        (isWatched
+                          ? "bg-blue-500 text-white hover:bg-red-500"
+                          : "bg-black/70 text-white hover:bg-blue-500 border border-white/20")}
                     >
                       {isWatched ? "★" : "☆"}
                     </button>
                   </div>
 
+                  {/* Card info */}
                   <div className="p-4 space-y-3">
                     <div>
                       <p className="font-bold text-white text-sm leading-tight">{card.name}</p>
