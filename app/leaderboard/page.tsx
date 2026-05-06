@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CardData } from "@/lib/types";
 import { mapApiCard } from "@/lib/api";
@@ -17,7 +17,7 @@ function calcProfit(card: CardData, fees: ReturnType<typeof useFees>["fees"]) {
 
 type EnrichedCard = CardData & { profit: number; roi: number; totalCosts: number; saleProceeds: number };
 
-export default function Leaderboard() {
+function LeaderboardInner() {
   const { fees } = useFees();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -34,7 +34,6 @@ export default function Leaderboard() {
   const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "5") || 5);
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
 
-  // Update URL when filters change
   function updateUrl(params: Record<string, string>) {
     const current = new URLSearchParams(searchParams.toString());
     Object.entries(params).forEach(([k, v]) => {
@@ -55,12 +54,9 @@ export default function Leaderboard() {
       .catch(() => setSetsLoading(false));
   }, []);
 
-  // Auto-fetch if set is in URL on load
   useEffect(() => {
     const setFromUrl = searchParams.get("set");
-    if (setFromUrl) {
-      fetchSetCards(setFromUrl);
-    }
+    if (setFromUrl) fetchSetCards(setFromUrl);
   }, []);
 
   async function fetchSetCards(setName: string) {
@@ -188,7 +184,6 @@ export default function Leaderboard() {
         </div>
 
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
-
           <div className="flex-1 min-w-48">
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
             <select
@@ -364,5 +359,17 @@ export default function Leaderboard() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function Leaderboard() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-zinc-500 font-mono text-sm">Loading...</div>
+      </div>
+    }>
+      <LeaderboardInner />
+    </Suspense>
   );
 }
