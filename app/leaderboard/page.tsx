@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CardData } from "@/lib/types";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
@@ -20,17 +20,29 @@ type EnrichedCard = CardData & { profit: number; roi: number; totalCosts: number
 export default function Leaderboard() {
   const { fees } = useFees();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [sets, setSets] = useState<{ name: string; id: string }[]>([]);
-  const [selectedSet, setSelectedSet] = useState("");
+  const [selectedSet, setSelectedSet] = useState(searchParams.get("set") ?? "");
   const [cards, setCards] = useState<CardData[]>([]);
   const [loading, setLoading] = useState(false);
   const [setsLoading, setSetsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [rarityFilter, setRarityFilter] = useState("All");
-  const [sortBy, setSortBy] = useState<"roi" | "profit" | "psa10" | "raw">("roi");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [minRaw, setMinRaw] = useState(5);
-  const [maxRaw, setMaxRaw] = useState(Infinity);
+  const [rarityFilter, setRarityFilter] = useState(searchParams.get("rarity") ?? "All");
+  const [sortBy, setSortBy] = useState<"roi" | "profit" | "psa10" | "raw">((searchParams.get("sort") as "roi" | "profit" | "psa10" | "raw") ?? "roi");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
+  const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "5") || 5);
+  const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
+
+  // Update URL when filters change
+  function updateUrl(params: Record<string, string>) {
+    const current = new URLSearchParams(searchParams.toString());
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) current.set(k, v);
+      else current.delete(k);
+    });
+    router.replace("/leaderboard?" + current.toString(), { scroll: false });
+  }
 
   useEffect(() => {
     fetch("/api/sets")
@@ -41,6 +53,14 @@ export default function Leaderboard() {
         setSetsLoading(false);
       })
       .catch(() => setSetsLoading(false));
+  }, []);
+
+  // Auto-fetch if set is in URL on load
+  useEffect(() => {
+    const setFromUrl = searchParams.get("set");
+    if (setFromUrl) {
+      fetchSetCards(setFromUrl);
+    }
   }, []);
 
   async function fetchSetCards(setName: string) {
@@ -58,6 +78,38 @@ export default function Leaderboard() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSetChange(setName: string) {
+    setSelectedSet(setName);
+    updateUrl({ set: setName });
+    if (setName) fetchSetCards(setName);
+  }
+
+  function handleRarityChange(rarity: string) {
+    setRarityFilter(rarity);
+    updateUrl({ rarity: rarity === "All" ? "" : rarity });
+  }
+
+  function handleSortByChange(sort: typeof sortBy) {
+    setSortBy(sort);
+    updateUrl({ sort });
+  }
+
+  function handleSortDirChange() {
+    const next = sortDir === "desc" ? "asc" : "desc";
+    setSortDir(next);
+    updateUrl({ dir: next });
+  }
+
+  function handleMinRawChange(val: number) {
+    setMinRaw(val);
+    updateUrl({ min: String(val) });
+  }
+
+  function handleMaxRawChange(val: number | typeof Infinity) {
+    setMaxRaw(val);
+    updateUrl({ max: val === Infinity ? "" : String(val) });
   }
 
   const rarities = useMemo(() => {
@@ -83,17 +135,10 @@ export default function Leaderboard() {
   function exportToCSV() {
     const headers = ["Rank", "Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "Total Cost", "Sale Proceeds", "Net Profit", "ROI %", "Multiple", "Image URL"];
     const rows = filtered.map((card, idx) => [
-      idx + 1,
-      card.name,
-      card.set,
-      card.rarity,
-      card.number,
-      card.rawPrice.toFixed(2),
-      card.psa10Price.toFixed(2),
-      card.totalCosts.toFixed(2),
-      card.saleProceeds.toFixed(2),
-      card.profit.toFixed(2),
-      card.roi.toFixed(1) + "%",
+      idx + 1, card.name, card.set, card.rarity, card.number,
+      card.rawPrice.toFixed(2), card.psa10Price.toFixed(2),
+      card.totalCosts.toFixed(2), card.saleProceeds.toFixed(2),
+      card.profit.toFixed(2), card.roi.toFixed(1) + "%",
       (card.psa10Price / card.rawPrice).toFixed(2) + "x",
       card.image ?? "",
     ]);
@@ -112,8 +157,8 @@ export default function Leaderboard() {
     return (
       <th
         onClick={() => {
-          if (sortBy === field) setSortDir(sortDir === "desc" ? "asc" : "desc");
-          else { setSortBy(field); setSortDir("desc"); }
+          if (sortBy === field) handleSortDirChange();
+          else { handleSortByChange(field); setSortDir("desc"); }
         }}
         className={"text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none " + (active ? "text-yellow-400" : "text-zinc-500 hover:text-white")}
       >
@@ -132,7 +177,6 @@ export default function Leaderboard() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
-        {/* Header */}
         <div className="mb-8">
           <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
           <h1 className="text-4xl font-black mt-2">
@@ -143,14 +187,13 @@ export default function Leaderboard() {
           <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click any card to see full details</p>
         </div>
 
-        {/* Controls */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
 
           <div className="flex-1 min-w-48">
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
             <select
               value={selectedSet}
-              onChange={(e) => { setSelectedSet(e.target.value); fetchSetCards(e.target.value); }}
+              onChange={(e) => handleSetChange(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
               disabled={setsLoading}
             >
@@ -163,7 +206,7 @@ export default function Leaderboard() {
             <label className="block text-xs text-zinc-500 font-mono mb-1">RARITY</label>
             <select
               value={rarityFilter}
-              onChange={(e) => setRarityFilter(e.target.value)}
+              onChange={(e) => handleRarityChange(e.target.value)}
               className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
             >
               {rarities.map((r) => <option key={r}>{r}</option>)}
@@ -175,7 +218,7 @@ export default function Leaderboard() {
             <div className="flex gap-2">
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                onChange={(e) => handleSortByChange(e.target.value as typeof sortBy)}
                 className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
               >
                 <option value="roi">ROI %</option>
@@ -184,7 +227,7 @@ export default function Leaderboard() {
                 <option value="raw">Raw Price</option>
               </select>
               <button
-                onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
+                onClick={handleSortDirChange}
                 className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2.5 text-white text-sm transition-colors font-mono"
               >
                 {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
@@ -200,7 +243,7 @@ export default function Leaderboard() {
                 value={minRaw}
                 min={0}
                 placeholder="Min"
-                onChange={(e) => setMinRaw(parseFloat(e.target.value) || 0)}
+                onChange={(e) => handleMinRawChange(parseFloat(e.target.value) || 0)}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
               <span className="text-zinc-600 text-sm font-mono">—</span>
@@ -209,7 +252,7 @@ export default function Leaderboard() {
                 value={maxRaw === Infinity ? "" : maxRaw}
                 min={0}
                 placeholder="Max"
-                onChange={(e) => setMaxRaw(e.target.value === "" ? Infinity : parseFloat(e.target.value) || Infinity)}
+                onChange={(e) => handleMaxRawChange(e.target.value === "" ? Infinity : parseFloat(e.target.value) || Infinity)}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
             </div>
@@ -226,7 +269,6 @@ export default function Leaderboard() {
           </div>
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">⚡</div>
@@ -234,12 +276,10 @@ export default function Leaderboard() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{error}</div>
         )}
 
-        {/* Empty states */}
         {!loading && !selectedSet && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏆</div>
@@ -254,7 +294,6 @@ export default function Leaderboard() {
           </div>
         )}
 
-        {/* Table */}
         {filtered.length > 0 && (
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
@@ -312,7 +351,7 @@ export default function Leaderboard() {
             </div>
             <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-600 font-mono">
-                {filtered.length} cards shown · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total in set · click any row to view full details
+                {filtered.length} cards · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total · click any row for full details
               </span>
               <button
                 onClick={exportToCSV}
