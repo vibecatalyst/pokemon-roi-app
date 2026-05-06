@@ -14,10 +14,13 @@ interface PriceHistoryEntry {
   count: number;
 }
 
+type MappedCard = ReturnType<typeof mapApiCard>;
+
 export default function CardDetail() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams();
+  const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
   const { fees } = useFees();
-  const [card, setCard] = useState<ReturnType<typeof mapApiCard> | null>(null);
+  const [card, setCard] = useState<MappedCard | null>(null);
   const [priceHistory, setPriceHistory] = useState<Record<string, Record<string, PriceHistoryEntry>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -54,6 +57,7 @@ export default function CardDetail() {
         image: card.image,
         rawPrice: card.rawPrice,
         psa10Price: card.psa10Price,
+        psa9Price: card.psa9Price ?? 0,
         rarity: card.rarity,
         number: card.number,
         addedAt: new Date().toISOString(),
