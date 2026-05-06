@@ -53,7 +53,7 @@ const GRADE_BAR_COLORS: Record<number, string> = {
   5: "bg-zinc-700",
 };
 
-export default function Summary() {
+export default function Profit() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "completed" | "grades">("overview");
@@ -115,6 +115,54 @@ export default function Summary() {
     };
   }, [submissions, fees, mounted]);
 
+  function exportToCSV() {
+    const headers = [
+      "Name", "Set", "Rarity", "Number", "Status",
+      "Raw Price Paid", "Grading Fee", "Shipping Cost", "Total Cost",
+      "PSA 10 Market", "PSA 9 Market", "Expected Profit", "Expected ROI %",
+      "Actual Grade", "Sold Price", "Actual Profit", "Actual ROI %",
+      "Submission #", "Submitted At", "Graded At", "Returned At", "Notes"
+    ];
+
+    const rows = submissions.map((s) => {
+      const expected = calcExpected(s, fees.ebayFeePercent);
+      const actual = calcActual(s, fees.ebayFeePercent);
+      return [
+        s.name,
+        s.set,
+        s.rarity,
+        s.number,
+        s.status,
+        s.rawPrice.toFixed(2),
+        s.gradingFee.toFixed(2),
+        s.shippingCost.toFixed(2),
+        expected.totalCost.toFixed(2),
+        s.psa10Price > 0 ? s.psa10Price.toFixed(2) : "",
+        s.psa9Price > 0 ? s.psa9Price.toFixed(2) : "",
+        s.psa10Price > 0 ? expected.profit.toFixed(2) : "",
+        s.psa10Price > 0 ? expected.roi.toFixed(1) + "%" : "",
+        s.actualGrade ? "PSA " + s.actualGrade : "",
+        s.soldPrice ? s.soldPrice.toFixed(2) : "",
+        actual ? actual.profit.toFixed(2) : "",
+        actual ? actual.roi.toFixed(1) + "%" : "",
+        s.submissionNumber ?? "",
+        s.submittedAt ? new Date(s.submittedAt).toLocaleDateString() : "",
+        s.gradedAt ? new Date(s.gradedAt).toLocaleDateString() : "",
+        s.returnedAt ? new Date(s.returnedAt).toLocaleDateString() : "",
+        s.notes ?? "",
+      ];
+    });
+
+    const csv = [headers, ...rows].map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "grading-history.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (!mounted) return null;
 
   return (
@@ -128,13 +176,23 @@ export default function Summary() {
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
 
         {/* Header */}
-        <div className="mb-8">
-          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
-          <h1 className="text-4xl font-black mt-2">
-            <span className="text-white">PROFIT </span>
-            <span className="text-emerald-400">SUMMARY</span>
-          </h1>
-          <p className="text-zinc-500 text-sm mt-1">Your grading performance and realized returns</p>
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+          <div>
+            <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
+            <h1 className="text-4xl font-black mt-2">
+              <span className="text-white">PROFIT </span>
+              <span className="text-emerald-400">SUMMARY</span>
+            </h1>
+            <p className="text-zinc-500 text-sm mt-1">Your grading performance and realized returns</p>
+          </div>
+          {submissions.length > 0 && (
+            <button
+              onClick={exportToCSV}
+              className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm"
+            >
+              Export CSV
+            </button>
+          )}
         </div>
 
         {/* Empty state */}
@@ -239,14 +297,12 @@ export default function Summary() {
                     const actual = calcActual(stats.bestCard, fees.ebayFeePercent)!;
                     return (
                       <div
-                        onClick={() => stats.bestCard?.tcgPlayerId && router.push("/card/" + stats.bestCard.tcgPlayerId)}
+                        onClick={() => stats.bestCard?.tcgPlayerId && router.push("/card/" + stats.bestCard.tcgPlayerId + "?from=" + encodeURIComponent("/profit"))}
                         className="bg-emerald-500/5 border border-emerald-500/20 hover:border-emerald-500/40 rounded-2xl p-5 cursor-pointer transition-colors"
                       >
                         <p className="text-xs text-zinc-500 font-mono mb-3">Best Card</p>
                         <div className="flex items-center gap-3 mb-4">
-                          {stats.bestCard.image && (
-                            <img src={stats.bestCard.image} alt={stats.bestCard.name} className="w-14 rounded flex-shrink-0" />
-                          )}
+                          {stats.bestCard.image && <img src={stats.bestCard.image} alt={stats.bestCard.name} className="w-14 rounded flex-shrink-0" />}
                           <div className="min-w-0">
                             <p className="font-bold text-white truncate">{stats.bestCard.name}</p>
                             <p className="text-xs text-zinc-500 truncate">{stats.bestCard.set}</p>
@@ -283,14 +339,12 @@ export default function Summary() {
                     const actual = calcActual(stats.worstCard, fees.ebayFeePercent)!;
                     return (
                       <div
-                        onClick={() => stats.worstCard?.tcgPlayerId && router.push("/card/" + stats.worstCard.tcgPlayerId)}
+                        onClick={() => stats.worstCard?.tcgPlayerId && router.push("/card/" + stats.worstCard.tcgPlayerId + "?from=" + encodeURIComponent("/profit"))}
                         className="bg-red-500/5 border border-red-500/20 hover:border-red-500/40 rounded-2xl p-5 cursor-pointer transition-colors"
                       >
                         <p className="text-xs text-zinc-500 font-mono mb-3">Worst Card</p>
                         <div className="flex items-center gap-3 mb-4">
-                          {stats.worstCard.image && (
-                            <img src={stats.worstCard.image} alt={stats.worstCard.name} className="w-14 rounded flex-shrink-0" />
-                          )}
+                          {stats.worstCard.image && <img src={stats.worstCard.image} alt={stats.worstCard.name} className="w-14 rounded flex-shrink-0" />}
                           <div className="min-w-0">
                             <p className="font-bold text-white truncate">{stats.worstCard.name}</p>
                             <p className="text-xs text-zinc-500 truncate">{stats.worstCard.set}</p>
@@ -360,7 +414,7 @@ export default function Summary() {
                             return (
                               <tr
                                 key={s.id}
-                                onClick={() => s.tcgPlayerId && router.push("/card/" + s.tcgPlayerId)}
+                                onClick={() => s.tcgPlayerId && router.push("/card/" + s.tcgPlayerId + "?from=" + encodeURIComponent("/profit"))}
                                 className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                               >
                                 <td className="px-4 py-3">
@@ -397,8 +451,16 @@ export default function Summary() {
                           })}
                         </tbody>
                       </table>
-                      <div className="px-4 py-3 border-t border-zinc-800 text-xs text-zinc-600 font-mono">
-                        {stats.completed.length} completed · {stats.withSale.length} with sale data · click any row to view card details
+                      <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+                        <span className="text-xs text-zinc-600 font-mono">
+                          {stats.completed.length} completed · {stats.withSale.length} with sale data · click any row to view card details
+                        </span>
+                        <button
+                          onClick={exportToCSV}
+                          className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
+                        >
+                          Export CSV
+                        </button>
                       </div>
                     </div>
                   )}
