@@ -75,24 +75,55 @@ export default function CardDetail() {
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
-        <div className="flex items-center justify-between mb-6">
+
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">
             ← Back to Search
           </Link>
-          {card && (
-            <button
-              onClick={toggleWatchlist}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-mono transition-colors ${
-                watched
-                  ? "bg-blue-500/20 border-blue-500/40 text-blue-400 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400"
-                  : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400"
-              }`}
-            >
-              {watched ? "★ Watching" : "☆ Add to Watchlist"}
-            </button>
-          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* PSA Pop Report link */}
+            {card && (
+              
+                href={`https://www.psacard.com/pop/trading-card-games/0/pokemon?q=${encodeURIComponent(card.name)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
+              >
+                📊 PSA Pop Report
+              </a>
+            )}
+
+            {/* TCGPlayer link */}
+            {card && (
+              
+                href={`https://www.tcgplayer.com/product/${card.tcgPlayerId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
+              >
+                🛒 TCGPlayer
+              </a>
+            )}
+
+            {/* Watchlist button */}
+            {card && (
+              <button
+                onClick={toggleWatchlist}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-mono transition-colors ${
+                  watched
+                    ? "bg-blue-500/20 border-blue-500/40 text-blue-400 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400"
+                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400"
+                }`}
+              >
+                {watched ? "★ Watching" : "☆ Add to Watchlist"}
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* Loading */}
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">⚡</div>
@@ -100,12 +131,14 @@ export default function CardDetail() {
           </div>
         )}
 
+        {/* Error */}
         {error && (
           <div className="mt-4 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">
             {error}
           </div>
         )}
 
+        {/* Card content */}
         {card && (
           <div className="space-y-6">
             <CardResult card={card} fees={fees} />
