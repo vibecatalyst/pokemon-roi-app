@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { CardData } from "@/lib/types";
 import Link from "next/link";
@@ -53,6 +54,7 @@ export default function Trending() {
   const [error, setError] = useState("");
   const [trendFilter, setTrendFilter] = useState<"all" | "up" | "down" | "stable">("up");
   const [sortBy, setSortBy] = useState<"volume" | "velocity" | "price">("volume");
+  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/sets")
@@ -70,7 +72,7 @@ export default function Trending() {
     setError("");
     setCards([]);
     try {
-      const res = await fetch(`/api/trending?set=${encodeURIComponent(setName)}`);
+      const res = await fetch("/api/trending?set=" + encodeURIComponent(setName));
       const json = await res.json();
       if (json.error) { setError(json.message ?? json.error); return; }
       const raw = json.data ?? [];
@@ -115,12 +117,12 @@ export default function Trending() {
 
         {/* Header */}
         <div className="mb-8">
-          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Search</Link>
+          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
           <h1 className="text-4xl font-black mt-2">
             <span className="text-white">TRENDING </span>
             <span className="text-emerald-400">CARDS</span>
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">PSA 10 price momentum and sales velocity by set</p>
+          <p className="text-zinc-500 text-sm mt-1">PSA 10 price momentum and sales velocity by set — click any card to see full details</p>
         </div>
 
         {/* Controls */}
@@ -146,14 +148,13 @@ export default function Trending() {
                 <button
                   key={t}
                   onClick={() => setTrendFilter(t)}
-                  className={`px-3 py-2.5 rounded-lg text-sm font-mono border transition-colors ${
-                    trendFilter === t
+                  className={"px-3 py-2.5 rounded-lg text-sm font-mono border transition-colors " +
+                    (trendFilter === t
                       ? t === "up" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
                         : t === "down" ? "bg-red-500/20 border-red-500/40 text-red-400"
                         : t === "stable" ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-400"
                         : "bg-zinc-700 border-zinc-600 text-white"
-                      : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-white"
-                  }`}
+                      : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-white")}
                 >
                   {t === "all" ? "All" : t === "up" ? "↑ Rising" : t === "down" ? "↓ Falling" : "→ Stable"}
                 </button>
@@ -185,7 +186,7 @@ export default function Trending() {
               { label: "↓ Falling", value: stats.down, color: "text-red-400" },
             ].map((s) => (
               <div key={s.label} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                <p className={`text-2xl font-black font-mono ${s.color}`}>{s.value}</p>
+                <p className={"text-2xl font-black font-mono " + s.color}>{s.value}</p>
                 <p className="text-xs text-zinc-600 mt-1">{s.label}</p>
               </div>
             ))}
@@ -225,13 +226,17 @@ export default function Trending() {
             {filtered.map((card) => {
               const trend = TREND_CONFIG[card.psa10Trend as keyof typeof TREND_CONFIG] ?? TREND_CONFIG.unknown;
               return (
-                <div key={card.id} className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 rounded-2xl overflow-hidden transition-colors">
+                <div
+                  key={card.id}
+                  onClick={() => router.push("/card/" + card.tcgPlayerId)}
+                  className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-2xl overflow-hidden transition-all cursor-pointer hover:scale-[1.02] hover:bg-zinc-800/60"
+                >
                   {/* Card image */}
                   <div className="relative">
                     {card.image && (
                       <img src={card.image} alt={card.name} className="w-full object-cover" />
                     )}
-                    <div className={`absolute top-2 right-2 text-xs font-bold px-2 py-1 rounded-full border ${trend.bg} ${trend.color}`}>
+                    <div className={"absolute top-2 right-2 text-xs font-bold px-2 py-1 rounded-full border " + trend.bg + " " + trend.color}>
                       {trend.label}
                     </div>
                   </div>
@@ -266,19 +271,24 @@ export default function Trending() {
                     {/* Sales velocity */}
                     <div className="flex justify-between items-center">
                       <div className="text-center">
-                        <p className="text-xs text-zinc-600 font-mono">Daily sales</p>
+                        <p className="text-xs text-zinc-600 font-mono">Daily</p>
                         <p className="text-sm font-black text-white font-mono">{card.salesVelocityDaily.toFixed(1)}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-xs text-zinc-600 font-mono">Weekly sales</p>
+                        <p className="text-xs text-zinc-600 font-mono">Weekly</p>
                         <p className="text-sm font-black text-white font-mono">{card.salesVelocityWeekly.toFixed(1)}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-xs text-zinc-600 font-mono">7d volume</p>
-                        <p className={`text-sm font-black font-mono ${card.psa10Volume7Day > 0 ? "text-emerald-400" : "text-zinc-600"}`}>
+                        <p className="text-xs text-zinc-600 font-mono">7d vol</p>
+                        <p className={"text-sm font-black font-mono " + (card.psa10Volume7Day > 0 ? "text-emerald-400" : "text-zinc-600")}>
                           {card.psa10Volume7Day > 0 ? card.psa10Volume7Day.toFixed(2) : "—"}
                         </p>
                       </div>
+                    </div>
+
+                    {/* Click hint */}
+                    <div className="text-center">
+                      <span className="text-xs text-zinc-700 font-mono">Click to view full ROI →</span>
                     </div>
                   </div>
                 </div>
