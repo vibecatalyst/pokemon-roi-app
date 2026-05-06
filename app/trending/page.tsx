@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { CardData } from "@/lib/types";
+import { addToWatchlist, removeFromWatchlist, isInWatchlist } from "@/lib/watchlist";
 import Link from "next/link";
 
 interface TrendingCard extends CardData {
@@ -52,6 +53,7 @@ export default function Trending() {
   const [error, setError] = useState("");
   const [trendFilter, setTrendFilter] = useState<"all" | "up" | "down" | "stable">("up");
   const [sortBy, setSortBy] = useState<"volume" | "velocity" | "price">("volume");
+  const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const router = useRouter();
 
   useEffect(() => {
@@ -74,11 +76,39 @@ export default function Trending() {
       const json = await res.json();
       if (json.error) { setError(json.message ?? json.error); return; }
       const raw = json.data ?? [];
-      setCards(raw.map(mapTrendingCard));
+      const mapped = raw.map(mapTrendingCard);
+      setCards(mapped);
+      const watched = new Set<string>();
+      mapped.forEach((c: TrendingCard) => {
+        if (isInWatchlist(c.tcgPlayerId)) watched.add(c.tcgPlayerId);
+      });
+      setWatchedIds(watched);
     } catch {
       setError("Failed to fetch data.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function toggleWatch(e: React.MouseEvent, card: TrendingCard) {
+    e.stopPropagation();
+    if (watchedIds.has(card.tcgPlayerId)) {
+      removeFromWatchlist(card.tcgPlayerId);
+      setWatchedIds(prev => { const next = new Set(prev); next.delete(card.tcgPlayerId); return next; });
+    } else {
+      addToWatchlist({
+        tcgPlayerId: card.tcgPlayerId,
+        name: card.name,
+        set: card.set,
+        image: card.image,
+        rawPrice: card.rawPrice,
+        psa10Price: card.psa10Price,
+        psa9Price: card.psa9Price ?? 0,
+        rarity: card.rarity,
+        number: card.number,
+        addedAt: new Date().toISOString(),
+      });
+      setWatchedIds(prev => new Set(prev).add(card.tcgPlayerId));
     }
   }
 
@@ -117,14 +147,13 @@ export default function Trending() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
-        {/* Header */}
         <div className="mb-8">
           <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
           <h1 className="text-4xl font-black mt-2">
             <span className="text-white">TRENDING </span>
             <span className="text-emerald-400">CARDS</span>
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">PSA 10 price momentum and sales velocity by set — click any card to see full details</p>
+          <p className="text-zinc-500 text-sm mt-1">PSA 10 price momentum and sales velocity — click card to view details · ☆ to watchlist</p>
         </div>
 
         {/* Controls */}
@@ -194,7 +223,6 @@ export default function Trending() {
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">📈</div>
@@ -202,12 +230,10 @@ export default function Trending() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{error}</div>
         )}
 
-        {/* Empty state */}
         {!loading && !selectedSet && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">📈</div>
@@ -226,6 +252,7 @@ export default function Trending() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((card) => {
               const trend = TREND_CONFIG[card.psa10Trend as keyof typeof TREND_CONFIG] ?? TREND_CONFIG.unknown;
+              const isWatched = watchedIds.has(card.tcgPlayerId);
               return (
                 <div
                   key={card.id}
@@ -239,6 +266,14 @@ export default function Trending() {
                     <div className={"absolute top-2 right-2 text-xs font-bold px-2 py-1 rounded-full border " + trend.bg + " " + trend.color}>
                       {trend.label}
                     </div>
+                    {/* Watchlist star */}
+                    <button
+                      onClick={(e) => toggleWatch(e, card)}
+                      className={"absolute top-2 left-2 text-xl transition-colors px-1 " + (isWatched ? "text-blue-400 hover:text-red-400" : "text-zinc-600 hover:text-blue-400")}
+                      title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
+                    >
+                      {isWatched ? "★" : "☆"}
+                    </button>
                   </div>
 
                   <div className="p-4 space-y-3">
