@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CardData } from "@/lib/types";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
+import { addToWatchlist, removeFromWatchlist, isInWatchlist } from "@/lib/watchlist";
 import Link from "next/link";
 
 function calcProfit(card: CardData, fees: ReturnType<typeof useFees>["fees"]) {
@@ -47,6 +48,7 @@ function LeaderboardInner() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
   const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "1") || 1);
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
+  const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
 
   function updateUrl(params: Record<string, string>) {
     const current = new URLSearchParams(searchParams.toString());
@@ -82,11 +84,40 @@ function LeaderboardInner() {
       const json = await res.json();
       if (json.error) { setError(json.message ?? json.error); return; }
       const raw = json.data ?? [];
-      setCards(raw.map(mapApiCard));
+      const mapped = raw.map(mapApiCard);
+      setCards(mapped);
+      // Update watched state for all cards
+      const watched = new Set<string>();
+      mapped.forEach((c: CardData) => {
+        if (isInWatchlist(c.tcgPlayerId)) watched.add(c.tcgPlayerId);
+      });
+      setWatchedIds(watched);
     } catch {
       setError("Failed to fetch set data.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
+    e.stopPropagation();
+    if (watchedIds.has(card.tcgPlayerId)) {
+      removeFromWatchlist(card.tcgPlayerId);
+      setWatchedIds(prev => { const next = new Set(prev); next.delete(card.tcgPlayerId); return next; });
+    } else {
+      addToWatchlist({
+        tcgPlayerId: card.tcgPlayerId,
+        name: card.name,
+        set: card.set,
+        image: card.image,
+        rawPrice: card.rawPrice,
+        psa10Price: card.psa10Price,
+        psa9Price: card.psa9Price ?? 0,
+        rarity: card.rarity,
+        number: card.number,
+        addedAt: new Date().toISOString(),
+      });
+      setWatchedIds(prev => new Set(prev).add(card.tcgPlayerId));
     }
   }
 
@@ -215,7 +246,7 @@ function LeaderboardInner() {
             <span className="text-yellow-400">ROI</span>
             <span className="text-white"> CARDS</span>
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click any card to see full details</p>
+          <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click any row to view details · ☆ to watchlist</p>
         </div>
 
         {/* Controls */}
@@ -357,7 +388,6 @@ function LeaderboardInner() {
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">⚡</div>
@@ -365,12 +395,10 @@ function LeaderboardInner() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{error}</div>
         )}
 
-        {/* Empty states */}
         {!loading && !selectedSet && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏆</div>
@@ -385,7 +413,6 @@ function LeaderboardInner() {
           </div>
         )}
 
-        {/* Table */}
         {filtered.length > 0 && (
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
@@ -393,6 +420,7 @@ function LeaderboardInner() {
                 <thead>
                   <tr className="border-b border-zinc-800">
                     <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8">#</th>
+                    <th className="text-left text-xs text-zinc-500 font-mono px-2 py-3 w-8"></th>
                     <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
                     <SortTh label="RAW" field="raw" />
                     <SortTh label="PSA 10" field="psa10" />
@@ -409,6 +437,7 @@ function LeaderboardInner() {
                   {filtered.map((card, idx) => {
                     const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
                     const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
+                    const isWatched = watchedIds.has(card.tcgPlayerId);
                     return (
                       <tr
                         key={card.id}
@@ -416,6 +445,17 @@ function LeaderboardInner() {
                         className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                       >
                         <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
+
+                        {/* Watchlist star */}
+                        <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
+                          <button
+                            className={"text-lg transition-colors " + (isWatched ? "text-blue-400 hover:text-red-400" : "text-zinc-700 hover:text-blue-400")}
+                            title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
+                          >
+                            {isWatched ? "★" : "☆"}
+                          </button>
+                        </td>
+
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {card.image && <img src={card.image} alt={card.name} className="w-10 rounded" />}
@@ -454,7 +494,7 @@ function LeaderboardInner() {
             </div>
             <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-600 font-mono">
-                {filtered.length} cards · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total · click any row for full details
+                {filtered.length} cards · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total · ☆ to watchlist · click row for details
               </span>
               <button
                 onClick={exportToCSV}
