@@ -5,6 +5,7 @@ export interface WatchlistItem {
   image: string;
   rawPrice: number;
   psa10Price: number;
+  psa9Price: number;
   rarity: string;
   number: string;
   addedAt: string;

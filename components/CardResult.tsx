@@ -1,424 +1,260 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { getWatchlist, removeFromWatchlist, WatchlistItem } from "@/lib/watchlist";
-import { useFees } from "@/lib/fees-context";
-import Link from "next/link";
+import { CardData, FeeSettings } from "@/lib/types";
 
-function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFees>["fees"]) {
-  const totalCosts = rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
-  const saleProceeds = price * (1 - fees.ebayFeePercent / 100);
-  const profit = saleProceeds - totalCosts;
-  const roi = totalCosts > 0 ? (profit / totalCosts) * 100 : 0;
-  return { profit, roi, totalCosts, saleProceeds };
+interface Props {
+  card: CardData;
+  fees: FeeSettings;
 }
 
-export default function Watchlist() {
-  const [items, setItems] = useState<WatchlistItem[]>([]);
-  const [mounted, setMounted] = useState(false);
-  const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("added");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { fees } = useFees();
-  const router = useRouter();
+function calcROI(salePrice: number, rawPrice: number, fees: FeeSettings) {
+  const buyPrice = rawPrice * (1 + fees.buyingFeePercent / 100);
+  const totalCosts = buyPrice + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
+  const saleProceeds = salePrice * (1 - fees.ebayFeePercent / 100);
+  const profit = saleProceeds - totalCosts;
+  const roi = totalCosts > 0 ? (profit / totalCosts) * 100 : 0;
+  const breakEven = totalCosts / (1 - fees.ebayFeePercent / 100);
+  const ebayFee = salePrice * (fees.ebayFeePercent / 100);
+  return { buyPrice, totalCosts, saleProceeds, profit, roi, breakEven, ebayFee };
+}
 
-  useEffect(() => {
-    setMounted(true);
-    setItems(getWatchlist());
-  }, []);
+function StatBox({ label, value, sub, highlight }: {
+  label: string; value: string; sub?: string; highlight?: "green" | "red" | "yellow";
+}) {
+  const colors = { green: "text-emerald-400", red: "text-red-400", yellow: "text-yellow-400" };
+  return (
+    <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
+      <p className="text-xs text-zinc-500 font-mono mb-1">{label}</p>
+      <p className={`text-2xl font-black font-mono ${highlight ? colors[highlight] : "text-white"}`}>{value}</p>
+      {sub && <p className="text-xs text-zinc-600 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
 
-  function handleRemove(tcgPlayerId: string) {
-    removeFromWatchlist(tcgPlayerId);
-    setItems(getWatchlist());
-  }
-
-  function toggleSort(key: typeof sortBy) {
-    if (sortBy === key) {
-      setSortDir(sortDir === "desc" ? "asc" : "desc");
-    } else {
-      setSortBy(key);
-      setSortDir("desc");
-    }
-  }
-
-  const sorted = useMemo(() => {
-    return [...items].sort((a, b) => {
-      const roiA = calcROI(a.psa10Price, a.rawPrice, fees).roi;
-      const roiB = calcROI(b.psa10Price, b.rawPrice, fees).roi;
-      const profitA = calcROI(a.psa10Price, a.rawPrice, fees).profit;
-      const profitB = calcROI(b.psa10Price, b.rawPrice, fees).profit;
-      let diff = 0;
-      if (sortBy === "roi") diff = roiB - roiA;
-      else if (sortBy === "raw") diff = b.rawPrice - a.rawPrice;
-      else if (sortBy === "psa10") diff = b.psa10Price - a.psa10Price;
-      else if (sortBy === "profit") diff = profitB - profitA;
-      else diff = new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
-      return sortDir === "desc" ? diff : -diff;
-    });
-  }, [items, sortBy, sortDir, fees]);
-
-  function exportToCSV() {
-    const headers = ["Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "PSA 9 Price", "Total Cost", "PSA 10 Profit", "PSA 10 ROI %", "PSA 9 Profit", "PSA 9 ROI %", "Added"];
-    const rows = sorted.map((item) => {
-      const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
-      const r9 = calcROI(item.psa9Price ?? 0, item.rawPrice, fees);
-      return [
-        item.name, item.set, item.rarity, item.number,
-        item.rawPrice.toFixed(2),
-        item.psa10Price.toFixed(2),
-        (item.psa9Price ?? 0).toFixed(2),
-        r10.totalCosts.toFixed(2),
-        r10.profit.toFixed(2),
-        r10.roi.toFixed(1) + "%",
-        r9.profit.toFixed(2),
-        r9.roi.toFixed(1) + "%",
-        new Date(item.addedAt).toLocaleDateString(),
-      ];
-    });
-    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "watchlist.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function SortHeader({ label, field }: { label: string; field: typeof sortBy }) {
-    const active = sortBy === field;
+function GradePanel({
+  label,
+  gradeColor,
+  salePrice,
+  rawPrice,
+  fees,
+  accent,
+}: {
+  label: string;
+  gradeColor: string;
+  salePrice: number;
+  rawPrice: number;
+  fees: FeeSettings;
+  accent: string;
+}) {
+  if (salePrice <= 0) {
     return (
-      <th
-        onClick={() => toggleSort(field)}
-        className={`text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none ${active ? "text-yellow-400" : "text-zinc-500 hover:text-white"}`}
-      >
-        {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
-      </th>
+      <div className="bg-zinc-800/20 border border-zinc-800 rounded-2xl p-5 flex items-center justify-center">
+        <p className="text-zinc-600 font-mono text-sm text-center">No {label} eBay data available</p>
+      </div>
     );
   }
 
-  if (!mounted) return null;
+  const r = calcROI(salePrice, rawPrice, fees);
+  const roiColor = r.profit > 0 ? "green" : r.profit < 0 ? "red" : "yellow";
 
   return (
-    <main className="min-h-screen bg-[#0a0a0f] text-white">
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/3 w-96 h-96 bg-blue-400/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-yellow-500/5 rounded-full blur-3xl" />
-        <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
+    <div className={`border rounded-2xl p-5 space-y-4 ${accent}`}>
+      <div className="flex items-center justify-between">
+        <h3 className={`text-lg font-black ${gradeColor}`}>{label}</h3>
+        <span className={`text-2xl font-black font-mono ${gradeColor}`}>${salePrice.toFixed(2)}</span>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
+      <div className="grid grid-cols-2 gap-3">
+        <StatBox label="Total cost" value={`$${r.totalCosts.toFixed(2)}`} sub="incl. grading & shipping" />
+        <StatBox label="Sale proceeds" value={`$${r.saleProceeds.toFixed(2)}`} sub={`after ${fees.ebayFeePercent}% fee`} />
+        <StatBox label="Net profit" value={`${r.profit >= 0 ? "+" : ""}$${r.profit.toFixed(2)}`} highlight={roiColor} />
+        <StatBox label="ROI" value={`${r.roi >= 0 ? "+" : ""}${r.roi.toFixed(1)}%`} sub={`${(r.saleProceeds / r.totalCosts).toFixed(2)}x money`} highlight={roiColor} />
+      </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Search</Link>
-            <h1 className="text-4xl font-black mt-2">
-              <span className="text-white">MY </span>
-              <span className="text-blue-400">WATCHLIST</span>
-            </h1>
-            <p className="text-zinc-500 text-sm mt-1">Cards you are tracking for grading opportunities</p>
+      <div className="bg-zinc-800/30 rounded-xl p-3 space-y-1.5">
+        <p className="text-xs text-zinc-500 font-mono mb-2">Cost Breakdown</p>
+        {[
+          { label: "Raw card price", value: rawPrice },
+          fees.buyingFeePercent > 0 ? { label: `Buying premium (${fees.buyingFeePercent}%)`, value: r.buyPrice - rawPrice } : null,
+          { label: "PSA grading fee", value: fees.gradingFee },
+          { label: "Shipping to grader", value: fees.shippingToGrader },
+          { label: "Shipping back", value: fees.shippingBack },
+          { label: `eBay fee (${fees.ebayFeePercent}%)`, value: -r.ebayFee },
+        ].filter(Boolean).map((item) => (
+          <div key={item!.label} className="flex justify-between items-center">
+            <span className="text-xs text-zinc-500">{item!.label}</span>
+            <span className={`text-xs font-mono font-bold ${item!.value < 0 ? "text-red-400" : "text-zinc-300"}`}>
+              {item!.value < 0 ? `-$${Math.abs(item!.value).toFixed(2)}` : `$${item!.value.toFixed(2)}`}
+            </span>
           </div>
-          {items.length > 0 && (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-zinc-500 font-mono">SORT</label>
-                <select
-                  value={sortBy}
-                  onChange={(e) => { setSortBy(e.target.value as typeof sortBy); setSortDir("desc"); }}
-                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm outline-none font-mono"
-                >
-                  <option value="added">Date Added</option>
-                  <option value="roi">ROI %</option>
-                  <option value="profit">Net Profit</option>
-                  <option value="raw">Raw Price</option>
-                  <option value="psa10">PSA 10 Price</option>
-                </select>
-                <button
-                  onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
-                  className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2 text-white text-sm transition-colors font-mono"
-                >
-                  {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
-                </button>
+        ))}
+        <div className="border-t border-zinc-700 pt-2 flex justify-between items-center">
+          <span className="text-xs text-zinc-400 font-bold">Break-even sale price</span>
+          <span className="text-sm font-mono font-black text-yellow-400">${r.breakEven.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div className={`rounded-xl p-3 border ${
+        r.profit > 0
+          ? "bg-emerald-500/10 border-emerald-500/20"
+          : r.profit < 0
+          ? "bg-red-500/10 border-red-500/20"
+          : "bg-zinc-800/40 border-zinc-700"
+      }`}>
+        <p className="text-xs font-mono mb-1 text-zinc-500">Verdict</p>
+        <p className={`font-bold text-sm ${r.profit > 0 ? "text-emerald-400" : r.profit < 0 ? "text-red-400" : "text-zinc-400"}`}>
+          {r.profit > 50
+            ? `✅ Strong — net $${r.profit.toFixed(2)} (${r.roi.toFixed(0)}% ROI)`
+            : r.profit > 0
+            ? `🟡 Marginal — $${r.profit.toFixed(2)} after all fees`
+            : r.profit < 0
+            ? `❌ Loss — -$${Math.abs(r.profit).toFixed(2)} at current prices`
+            : "⚪ Break even"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function CardResult({ card, fees }: Props) {
+  const hasPsa10 = card.psa10Price > 0;
+  const hasPsa9 = (card.psa9Price ?? 0) > 0;
+  const psa9Price = card.psa9Price ?? 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Card header */}
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <div className="flex gap-5">
+          {card.image && (
+            <img src={card.image} alt={card.name} className="w-28 rounded-lg flex-shrink-0 shadow-xl" />
+          )}
+          <div className="flex-1 min-w-0">
+            <h2 className="text-2xl font-black text-white">{card.name}</h2>
+            <p className="text-zinc-400 text-sm mt-0.5">{card.set}</p>
+            {card.number && <p className="text-zinc-600 text-xs font-mono mt-1">#{card.number}</p>}
+            {card.rarity && (
+              <span className="inline-block mt-2 text-xs bg-zinc-800 border border-zinc-700 rounded-full px-3 py-0.5 text-zinc-400">
+                {card.rarity}
+              </span>
+            )}
+
+            {/* Quick price summary */}
+            <div className="flex gap-3 mt-4 flex-wrap">
+              <div className="bg-zinc-800/60 rounded-lg px-3 py-2">
+                <p className="text-xs text-zinc-500 font-mono">Raw</p>
+                <p className="text-lg font-black text-white font-mono">
+                  {card.rawPrice > 0 ? `$${card.rawPrice.toFixed(2)}` : "N/A"}
+                </p>
               </div>
-              <button
-                onClick={exportToCSV}
-                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2 rounded-lg transition-colors text-sm"
-              >
-                Export CSV
-              </button>
+              {hasPsa9 && (
+                <div className="bg-blue-400/5 border border-blue-400/20 rounded-lg px-3 py-2">
+                  <p className="text-xs text-blue-400/60 font-mono">PSA 9</p>
+                  <p className="text-lg font-black text-blue-400 font-mono">${psa9Price.toFixed(2)}</p>
+                </div>
+              )}
+              {hasPsa10 && (
+                <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-lg px-3 py-2">
+                  <p className="text-xs text-yellow-400/60 font-mono">PSA 10</p>
+                  <p className="text-lg font-black text-yellow-400 font-mono">${card.psa10Price.toFixed(2)}</p>
+                </div>
+              )}
+              {hasPsa9 && hasPsa10 && (
+                <div className="bg-zinc-800/60 rounded-lg px-3 py-2">
+                  <p className="text-xs text-zinc-500 font-mono">10 vs 9 premium</p>
+                  <p className="text-lg font-black text-white font-mono">
+                    +${(card.psa10Price - psa9Price).toFixed(2)}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* No data state */}
+      {!hasPsa10 && !hasPsa9 && (
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 text-center text-zinc-600 font-mono text-sm">
+          No PSA eBay data available for this card yet.
+        </div>
+      )}
+
+      {/* Grade comparison */}
+      {(hasPsa10 || hasPsa9) && card.rawPrice > 0 && (
+        <>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-zinc-800" />
+            <span className="text-xs text-zinc-600 font-mono uppercase tracking-widest">Grade Comparison</span>
+            <div className="flex-1 h-px bg-zinc-800" />
+          </div>
+
+          <div className={`grid gap-4 ${hasPsa9 && hasPsa10 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+            {hasPsa10 && (
+              <GradePanel
+                label="PSA 10 — Gem Mint"
+                gradeColor="text-yellow-400"
+                salePrice={card.psa10Price}
+                rawPrice={card.rawPrice}
+                fees={fees}
+                accent="bg-yellow-400/5 border-yellow-400/10"
+              />
+            )}
+            {hasPsa9 && (
+              <GradePanel
+                label="PSA 9 — Mint"
+                gradeColor="text-blue-400"
+                salePrice={psa9Price}
+                rawPrice={card.rawPrice}
+                fees={fees}
+                accent="bg-blue-400/5 border-blue-400/10"
+              />
+            )}
+          </div>
+
+          {/* Comparison callout */}
+          {hasPsa9 && hasPsa10 && (
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+              <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest mb-3">Which grade is better to target?</p>
+              {(() => {
+                const roi10 = calcROI(card.psa10Price, card.rawPrice, fees);
+                const roi9 = calcROI(psa9Price, card.rawPrice, fees);
+                const diff = roi10.profit - roi9.profit;
+                const bothProfitable = roi10.profit > 0 && roi9.profit > 0;
+                const neitherProfitable = roi10.profit <= 0 && roi9.profit <= 0;
+                return (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-yellow-400 font-mono">PSA 10 profit</span>
+                      <span className={`text-sm font-black font-mono ${roi10.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {roi10.profit >= 0 ? "+" : ""}${roi10.profit.toFixed(2)} ({roi10.roi.toFixed(0)}% ROI)
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-blue-400 font-mono">PSA 9 profit</span>
+                      <span className={`text-sm font-black font-mono ${roi9.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {roi9.profit >= 0 ? "+" : ""}${roi9.profit.toFixed(2)} ({roi9.roi.toFixed(0)}% ROI)
+                      </span>
+                    </div>
+                    <div className="border-t border-zinc-800 pt-2">
+                      <p className="text-sm text-white font-bold">
+                        {neitherProfitable
+                          ? "❌ Neither grade is profitable at current prices"
+                          : !bothProfitable && roi10.profit > 0
+                          ? "⚠️ Only profitable if you hit PSA 10 — PSA 9 is a loss"
+                          : !bothProfitable && roi9.profit > 0
+                          ? "✅ Even a PSA 9 is profitable on this card"
+                          : diff > 20
+                          ? `✅ PSA 10 is worth chasing — $${diff.toFixed(2)} more profit than a 9`
+                          : `🟡 PSA 9 is nearly as good — only $${diff.toFixed(2)} less than a 10`}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
-        </div>
-
-        {/* Stats */}
-        {items.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            {(() => {
-              const profitable = items.filter((i) => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
-              const totalProfit = items.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
-              const avgRoi = items.length > 0 ? items.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).roi, 0) / items.length : 0;
-              return (
-                <>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-black text-white font-mono">{items.length}</p>
-                    <p className="text-xs text-zinc-600 mt-1">Cards watching</p>
-                  </div>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-black text-emerald-400 font-mono">{profitable.length}</p>
-                    <p className="text-xs text-zinc-600 mt-1">Profitable to grade</p>
-                  </div>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className={`text-2xl font-black font-mono ${totalProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {totalProfit >= 0 ? "+" : ""}${totalProfit.toFixed(0)}
-                    </p>
-                    <p className="text-xs text-zinc-600 mt-1">Total potential profit</p>
-                  </div>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className={`text-2xl font-black font-mono ${avgRoi >= 0 ? "text-yellow-400" : "text-red-400"}`}>
-                      {avgRoi >= 0 ? "+" : ""}{avgRoi.toFixed(0)}%
-                    </p>
-                    <p className="text-xs text-zinc-600 mt-1">Average ROI</p>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {items.length === 0 && (
-          <div className="text-center py-20">
-            <div className="text-5xl mb-4">👀</div>
-            <p className="text-zinc-500 font-mono text-sm mb-2">Your watchlist is empty</p>
-            <p className="text-zinc-700 text-xs mb-6">Search for cards and click the bookmark icon to add them here</p>
-            <Link href="/" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
-              Search Cards
-            </Link>
-          </div>
-        )}
-
-        {/* Table */}
-        {sorted.length > 0 && (
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-zinc-800">
-                    <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8"></th>
-                    <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
-                    <SortHeader label="RAW" field="raw" />
-                    <SortHeader label="PSA 10" field="psa10" />
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PSA 9</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">TOTAL COST</th>
-                    <SortHeader label="P10 PROFIT" field="profit" />
-                    <SortHeader label="P10 ROI" field="roi" />
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">P9 PROFIT</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">P9 ROI</th>
-                    <SortHeader label="ADDED" field="added" />
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((item) => {
-                    const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
-                    const r9 = calcROI(item.psa9Price ?? 0, item.rawPrice, fees);
-                    const hasPsa9 = (item.psa9Price ?? 0) > 0;
-                    const roi10Color = r10.roi > 50 ? "text-emerald-400" : r10.roi > 0 ? "text-yellow-400" : "text-red-400";
-                    const roi9Color = r9.roi > 50 ? "text-emerald-400" : r9.roi > 0 ? "text-yellow-400" : "text-red-400";
-                    const isExpanded = expandedId === item.tcgPlayerId;
-
-                    return (
-                      <>
-                        <tr
-                          key={item.tcgPlayerId}
-                          className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
-                        >
-                          {/* Expand toggle */}
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => setExpandedId(isExpanded ? null : item.tcgPlayerId)}
-                              className="text-zinc-600 hover:text-white transition-colors text-sm font-mono w-5"
-                            >
-                              {isExpanded ? "▼" : "▶"}
-                            </button>
-                          </td>
-
-                          {/* Card name */}
-                          <td
-                            className="px-4 py-3 cursor-pointer"
-                            onClick={() => router.push(`/card/${item.tcgPlayerId}`)}
-                          >
-                            <div className="flex items-center gap-3">
-                              {item.image && <img src={item.image} alt={item.name} className="w-10 rounded" />}
-                              <div>
-                                <p className="text-sm font-semibold text-white">{item.name}</p>
-                                <p className="text-xs text-zinc-600">{item.set} · {item.rarity} · #{item.number}</p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">
-                            {item.rawPrice > 0 ? `$${item.rawPrice.toFixed(2)}` : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">
-                            {item.psa10Price > 0 ? `$${item.psa10Price.toFixed(2)}` : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
-                            {hasPsa9 ? `$${item.psa9Price!.toFixed(2)}` : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">
-                            ${r10.totalCosts.toFixed(2)}
-                          </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${roi10Color}`}>
-                            {item.psa10Price > 0 ? `${r10.profit >= 0 ? "+" : ""}$${r10.profit.toFixed(2)}` : "N/A"}
-                          </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${roi10Color}`}>
-                            {item.psa10Price > 0 ? `${r10.roi >= 0 ? "+" : ""}${r10.roi.toFixed(0)}%` : "N/A"}
-                          </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${hasPsa9 ? roi9Color : "text-zinc-600"}`}>
-                            {hasPsa9 ? `${r9.profit >= 0 ? "+" : ""}$${r9.profit.toFixed(2)}` : "N/A"}
-                          </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${hasPsa9 ? roi9Color : "text-zinc-600"}`}>
-                            {hasPsa9 ? `${r9.roi >= 0 ? "+" : ""}${r9.roi.toFixed(0)}%` : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-xs font-mono text-zinc-600">
-                            {new Date(item.addedAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }}
-                              className="text-zinc-600 hover:text-red-400 transition-colors text-lg"
-                            >
-                              ×
-                            </button>
-                          </td>
-                        </tr>
-
-                        {/* Expanded grade comparison */}
-                        {isExpanded && (
-                          <tr key={`${item.tcgPlayerId}-expanded`} className="border-b border-zinc-800">
-                            <td colSpan={12} className="px-4 py-4 bg-zinc-900/40">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                                {/* PSA 10 panel */}
-                                {item.psa10Price > 0 && (
-                                  <div className="bg-yellow-400/5 border border-yellow-400/10 rounded-xl p-4 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <p className="text-sm font-black text-yellow-400">PSA 10 — Gem Mint</p>
-                                      <p className="text-lg font-black text-yellow-400 font-mono">${item.psa10Price.toFixed(2)}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Total cost</p>
-                                        <p className="text-white font-bold">${r10.totalCosts.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Proceeds</p>
-                                        <p className="text-white font-bold">${r10.saleProceeds.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Profit</p>
-                                        <p className={`font-bold ${r10.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                          {r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)}
-                                        </p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">ROI</p>
-                                        <p className={`font-bold ${r10.roi >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                          {r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <p className={`text-xs font-mono pt-1 ${r10.profit > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                      Break-even: ${r10.breakEven.toFixed(2)}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* PSA 9 panel */}
-                                {hasPsa9 && (
-                                  <div className="bg-blue-400/5 border border-blue-400/10 rounded-xl p-4 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <p className="text-sm font-black text-blue-400">PSA 9 — Mint</p>
-                                      <p className="text-lg font-black text-blue-400 font-mono">${item.psa9Price!.toFixed(2)}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Total cost</p>
-                                        <p className="text-white font-bold">${r9.totalCosts.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Proceeds</p>
-                                        <p className="text-white font-bold">${r9.saleProceeds.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Profit</p>
-                                        <p className={`font-bold ${r9.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                          {r9.profit >= 0 ? "+" : ""}${r9.profit.toFixed(2)}
-                                        </p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">ROI</p>
-                                        <p className={`font-bold ${r9.roi >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                          {r9.roi >= 0 ? "+" : ""}{r9.roi.toFixed(0)}%
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <p className={`text-xs font-mono pt-1 ${r9.profit > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                      Break-even: ${r9.breakEven.toFixed(2)}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Verdict */}
-                              {item.psa10Price > 0 && hasPsa9 && (
-                                <div className="mt-3 bg-zinc-800/40 border border-zinc-700 rounded-xl p-3">
-                                  <p className="text-xs font-mono text-zinc-500 mb-1">Verdict</p>
-                                  {(() => {
-                                    const diff = r10.profit - r9.profit;
-                                    const bothProfitable = r10.profit > 0 && r9.profit > 0;
-                                    const neitherProfitable = r10.profit <= 0 && r9.profit <= 0;
-                                    return (
-                                      <p className="text-sm font-bold text-white">
-                                        {neitherProfitable
-                                          ? "❌ Neither grade is profitable at current prices"
-                                          : !bothProfitable && r10.profit > 0
-                                          ? "⚠️ Only profitable if you hit PSA 10 — PSA 9 is a loss"
-                                          : !bothProfitable && r9.profit > 0
-                                          ? "✅ Even a PSA 9 is profitable on this card"
-                                          : diff > 20
-                                          ? `✅ PSA 10 worth chasing — $${diff.toFixed(2)} more than a 9`
-                                          : `🟡 PSA 9 nearly as good — only $${diff.toFixed(2)} less than a 10`}
-                                      </p>
-                                    );
-                                  })()}
-                                </div>
-                              )}
-
-                              <button
-                                onClick={() => router.push(`/card/${item.tcgPlayerId}`)}
-                                className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors font-mono"
-                              >
-                                View full detail & price history →
-                              </button>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-4 py-3 border-t border-zinc-800 text-xs text-zinc-600 font-mono">
-              {sorted.length} cards · click ▶ to expand grade comparison · click card name to view full details
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
+        </>
+      )}
+    </div>
   );
 }
