@@ -21,6 +21,9 @@ export default function Watchlist() {
   const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("added");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState(0);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const { fees } = useFees();
   const router = useRouter();
 
@@ -32,6 +35,48 @@ export default function Watchlist() {
   function handleRemove(tcgPlayerId: string) {
     removeFromWatchlist(tcgPlayerId);
     setItems(getWatchlist());
+  }
+
+  async function handleRefreshAll() {
+    if (items.length === 0) return;
+    setRefreshing(true);
+    setRefreshProgress(0);
+
+    const updated = [...items];
+    for (let i = 0; i < updated.length; i++) {
+      try {
+        const res = await fetch(`/api/card?id=${updated[i].tcgPlayerId}`);
+        const json = await res.json();
+        const raw = json.data;
+        const cardData = Array.isArray(raw) ? raw[0] : raw;
+        if (cardData) {
+          const prices = (cardData.prices as Record<string, number>) ?? {};
+          const rawPrice = prices.market ?? prices.low ?? updated[i].rawPrice;
+
+          const ebay = (cardData.ebay as Record<string, unknown>) ?? {};
+          const salesByGrade = (ebay.salesByGrade as Record<string, Record<string, unknown>>) ?? {};
+          const psa10 = salesByGrade.psa10 ?? {};
+          const psa9 = salesByGrade.psa9 ?? {};
+          const smart10 = (psa10.smartMarketPrice as Record<string, number>) ?? {};
+          const smart9 = (psa9.smartMarketPrice as Record<string, number>) ?? {};
+
+          const psa10Price = smart10.price ?? (psa10.marketPrice7Day as number) ?? updated[i].psa10Price;
+          const psa9Price = smart9.price ?? (psa9.marketPrice7Day as number) ?? updated[i].psa9Price;
+
+          updated[i] = { ...updated[i], rawPrice, psa10Price, psa9Price };
+        }
+      } catch {
+        // keep existing price if fetch fails
+      }
+      setRefreshProgress(i + 1);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+
+    localStorage.setItem("pokeroi-watchlist", JSON.stringify(updated));
+    setItems(updated);
+    setRefreshing(false);
+    setRefreshProgress(0);
+    setLastRefreshed(new Date());
   }
 
   function toggleSort(key: typeof sortBy) {
@@ -112,17 +157,19 @@ export default function Watchlist() {
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div>
-            <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Search</Link>
+            <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
             <h1 className="text-4xl font-black mt-2">
               <span className="text-white">MY </span>
               <span className="text-blue-400">WATCHLIST</span>
             </h1>
             <p className="text-zinc-500 text-sm mt-1">Cards you are tracking for grading opportunities</p>
           </div>
+
           {items.length > 0 && (
-            <div className="flex items-center gap-3 flex-wrap justify-end">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Sort controls */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-zinc-500 font-mono">SORT</label>
                 <select
@@ -143,6 +190,24 @@ export default function Watchlist() {
                   {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
                 </button>
               </div>
+
+              {/* Refresh button */}
+              <button
+                onClick={handleRefreshAll}
+                disabled={refreshing}
+                className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-600 border border-zinc-700 text-zinc-300 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
+              >
+                {refreshing ? (
+                  <>
+                    <span className="animate-spin inline-block">⟳</span>
+                    {refreshProgress}/{items.length}
+                  </>
+                ) : (
+                  <>⟳ Refresh Prices</>
+                )}
+              </button>
+
+              {/* Export button */}
               <button
                 onClick={exportToCSV}
                 className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2 rounded-lg transition-colors text-sm"
@@ -152,6 +217,13 @@ export default function Watchlist() {
             </div>
           )}
         </div>
+
+        {/* Last refreshed */}
+        {lastRefreshed && (
+          <p className="text-xs text-zinc-600 font-mono mb-4">
+            Prices last refreshed at {lastRefreshed.toLocaleTimeString()}
+          </p>
+        )}
 
         {/* Stats */}
         {items.length > 0 && (
@@ -404,8 +476,17 @@ export default function Watchlist() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-3 border-t border-zinc-800 text-xs text-zinc-600 font-mono">
-              {sorted.length} cards · click ▶ to expand grade comparison · click card name to view full details
+            <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+              <span className="text-xs text-zinc-600 font-mono">
+                {sorted.length} cards · click ▶ to expand · click name to view details
+                {lastRefreshed && ` · refreshed ${lastRefreshed.toLocaleTimeString()}`}
+              </span>
+              <button
+                onClick={exportToCSV}
+                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
+              >
+                Export CSV
+              </button>
             </div>
           </div>
         )}
