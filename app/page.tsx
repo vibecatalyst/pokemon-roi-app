@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import SearchBar from "@/components/SearchBar";
 import { CardData } from "@/lib/types";
-import { useFees } from "@/lib/fees-context";
+import { searchCards } from "@/lib/api";
 import { getWatchlist, WatchlistItem } from "@/lib/watchlist";
 import { getSubmissions, Submission } from "@/lib/submissions";
+import { useFees } from "@/lib/fees-context";
+import Link from "next/link";
 
 function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFees>["fees"]) {
   const totalCosts = rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
@@ -21,7 +22,7 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
   return (
     <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
       <p className="text-xs text-zinc-500 font-mono mb-1">{label}</p>
-      <p className={`text-2xl font-black font-mono ${color ?? "text-white"}`}>{value}</p>
+      <p className={"text-2xl font-black font-mono " + (color ?? "text-white")}>{value}</p>
       {sub && <p className="text-xs text-zinc-600 mt-1">{sub}</p>}
     </div>
   );
@@ -36,23 +37,38 @@ const STATUS_LABELS: Record<string, string> = {
   returned: "✅ Returned",
 };
 
-export default function Dashboard() {
+function HomeInner() {
   const [results, setResults] = useState<CardData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [lastQuery, setLastQuery] = useState("");
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [mounted, setMounted] = useState(false);
   const { fees } = useFees();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setMounted(true);
     setWatchlist(getWatchlist());
     setSubmissions(getSubmissions());
+
+    const q = searchParams.get("q");
+    if (q && q.trim()) {
+      setLastQuery(q);
+      setLoading(true);
+      searchCards(q.trim())
+        .then((cards) => { if (cards.length > 0) setResults(cards); })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
   }, []);
 
-  // Watchlist stats
+  function cardUrl(tcgPlayerId: string) {
+    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/?q=" + encodeURIComponent(lastQuery));
+  }
+
   const watchlistStats = mounted ? (() => {
     const profitable = watchlist.filter(i => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
     const totalProfit = watchlist.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
@@ -61,7 +77,6 @@ export default function Dashboard() {
     return { profitable, totalProfit, avgRoi, topCard };
   })() : null;
 
-  // Submission stats
   const submissionStats = mounted ? (() => {
     const active = submissions.filter(s => s.status !== "returned");
     const returned = submissions.filter(s => s.status === "returned" && s.soldPrice);
@@ -74,7 +89,6 @@ export default function Dashboard() {
     return { active, totalInvested, realizedProfit };
   })() : null;
 
-  // Top watchlist opportunities
   const topOpportunities = mounted
     ? [...watchlist]
         .filter(i => i.psa10Price > 0)
@@ -82,6 +96,8 @@ export default function Dashboard() {
         .sort((a, b) => b.roi - a.roi)
         .slice(0, 5)
     : [];
+
+  const showDashboard = results.length === 0 && !loading && mounted;
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
@@ -106,8 +122,12 @@ export default function Dashboard() {
 
         {/* Search */}
         <SearchBar
-          onResults={setResults}
+          onResults={(cards) => setResults(cards)}
           onSelect={() => {}}
+          onQueryChange={(q) => {
+            setLastQuery(q);
+            router.replace("/?q=" + encodeURIComponent(q), { scroll: false });
+          }}
           setLoading={setLoading}
           setError={setError}
           loading={loading}
@@ -122,12 +142,20 @@ export default function Dashboard() {
         {/* Search results */}
         {results.length > 0 && (
           <div className="mt-6">
-            <p className="text-zinc-500 text-sm mb-4 font-mono">{results.length} cards found — click to view ROI</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-zinc-500 text-sm font-mono">{results.length} cards found — click to view ROI</p>
+              <button
+                onClick={() => { setResults([]); router.replace("/", { scroll: false }); }}
+                className="text-xs text-zinc-600 hover:text-zinc-400 font-mono transition-colors"
+              >
+                Clear ✕
+              </button>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {results.map((card, idx) => (
                 <button
-                  key={`${card.id}-${idx}`}
-                  onClick={() => router.push(`/card/${card.tcgPlayerId}`)}
+                  key={card.id + "-" + idx}
+                  onClick={() => router.push(cardUrl(card.tcgPlayerId))}
                   className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-yellow-400/40 rounded-xl p-3 text-left transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
                 >
                   {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />}
@@ -145,8 +173,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Dashboard content — only show when not searching */}
-        {results.length === 0 && mounted && (
+        {/* Dashboard */}
+        {showDashboard && (
           <div className="mt-10 space-y-8">
 
             {/* Quick nav */}
@@ -154,8 +182,8 @@ export default function Dashboard() {
               {[
                 { href: "/leaderboard", icon: "🏆", label: "Top ROI", sub: "Best cards to grade by set" },
                 { href: "/trending", icon: "📈", label: "Trending", sub: "Rising PSA 10 prices" },
-                { href: "/watchlist", icon: "★", label: "Watchlist", sub: `${watchlist.length} cards saved` },
-                { href: "/submissions", icon: "📦", label: "Submissions", sub: `${submissionStats?.active.length ?? 0} in progress` },
+                { href: "/watchlist", icon: "★", label: "Watchlist", sub: watchlist.length + " cards saved" },
+                { href: "/submissions", icon: "📦", label: "Submissions", sub: (submissionStats?.active.length ?? 0) + " in progress" },
               ].map((item) => (
                 <Link
                   key={item.href}
@@ -183,22 +211,21 @@ export default function Dashboard() {
                   <StatCard
                     label="Profitable to grade"
                     value={String(watchlistStats.profitable.length)}
-                    sub={`${((watchlistStats.profitable.length / watchlist.length) * 100).toFixed(0)}% of watchlist`}
+                    sub={((watchlistStats.profitable.length / watchlist.length) * 100).toFixed(0) + "% of watchlist"}
                     color="text-emerald-400"
                   />
                   <StatCard
                     label="Total potential profit"
-                    value={`${watchlistStats.totalProfit >= 0 ? "+" : ""}$${watchlistStats.totalProfit.toFixed(0)}`}
+                    value={(watchlistStats.totalProfit >= 0 ? "+" : "") + "$" + watchlistStats.totalProfit.toFixed(0)}
                     color={watchlistStats.totalProfit >= 0 ? "text-emerald-400" : "text-red-400"}
                   />
                   <StatCard
                     label="Average ROI"
-                    value={`${watchlistStats.avgRoi >= 0 ? "+" : ""}${watchlistStats.avgRoi.toFixed(0)}%`}
+                    value={(watchlistStats.avgRoi >= 0 ? "+" : "") + watchlistStats.avgRoi.toFixed(0) + "%"}
                     color={watchlistStats.avgRoi >= 0 ? "text-yellow-400" : "text-red-400"}
                   />
                 </div>
 
-                {/* Top opportunities */}
                 {topOpportunities.length > 0 && (
                   <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-zinc-800">
@@ -210,7 +237,7 @@ export default function Dashboard() {
                         return (
                           <div
                             key={card.tcgPlayerId}
-                            onClick={() => router.push(`/card/${card.tcgPlayerId}`)}
+                            onClick={() => router.push("/card/" + card.tcgPlayerId + "?from=" + encodeURIComponent("/watchlist"))}
                             className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                           >
                             <span className="text-zinc-600 font-mono text-sm w-4">{idx + 1}</span>
@@ -220,10 +247,10 @@ export default function Dashboard() {
                               <p className="text-xs text-zinc-600 truncate">{card.set}</p>
                             </div>
                             <div className="text-right flex-shrink-0">
-                              <p className={`text-sm font-black font-mono ${roiColor}`}>
+                              <p className={"text-sm font-black font-mono " + roiColor}>
                                 {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
                               </p>
-                              <p className={`text-xs font-mono ${roiColor}`}>
+                              <p className={"text-xs font-mono " + roiColor}>
                                 {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
                               </p>
                             </div>
@@ -248,15 +275,14 @@ export default function Dashboard() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                   <StatCard label="Total submitted" value={String(submissions.length)} />
                   <StatCard label="In progress" value={String(submissionStats.active.length)} color="text-orange-400" />
-                  <StatCard label="Capital at risk" value={`$${submissionStats.totalInvested.toFixed(0)}`} color="text-yellow-400" />
+                  <StatCard label="Capital at risk" value={"$" + submissionStats.totalInvested.toFixed(0)} color="text-yellow-400" />
                   <StatCard
                     label="Realized profit"
-                    value={`${submissionStats.realizedProfit >= 0 ? "+" : ""}$${submissionStats.realizedProfit.toFixed(0)}`}
+                    value={(submissionStats.realizedProfit >= 0 ? "+" : "") + "$" + submissionStats.realizedProfit.toFixed(0)}
                     color={submissionStats.realizedProfit >= 0 ? "text-emerald-400" : "text-red-400"}
                   />
                 </div>
 
-                {/* Active submissions */}
                 {submissionStats.active.length > 0 && (
                   <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-zinc-800">
@@ -293,7 +319,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Empty state — new user */}
+            {/* Empty state */}
             {watchlist.length === 0 && submissions.length === 0 && (
               <div className="text-center py-10">
                 <div className="text-5xl mb-4">⚡</div>
@@ -315,5 +341,17 @@ export default function Dashboard() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-zinc-500 font-mono text-sm">Loading...</div>
+      </div>
+    }>
+      <HomeInner />
+    </Suspense>
   );
 }

@@ -63,7 +63,6 @@ function SubmitModal({ card, fees, onClose, onSubmit }: SubmitModalProps) {
           <button onClick={onClose} className="text-zinc-600 hover:text-white transition-colors text-xl">✕</button>
         </div>
 
-        {/* Card preview */}
         <div className="flex items-center gap-3 bg-zinc-800/40 rounded-xl p-3">
           {card.image && <img src={card.image} alt={card.name} className="w-12 rounded flex-shrink-0" />}
           <div className="min-w-0">
@@ -103,7 +102,6 @@ function SubmitModal({ card, fees, onClose, onSubmit }: SubmitModalProps) {
           </div>
         </div>
 
-        {/* Profit preview */}
         {rawPrice > 0 && psa10Price > 0 && (
           <div className="bg-zinc-800/40 rounded-xl p-3 grid grid-cols-2 gap-2 text-xs font-mono">
             <div>
@@ -208,6 +206,7 @@ function CardDetailInner() {
     if (fromUrl.startsWith("/leaderboard")) return "← Back to Leaderboard";
     if (fromUrl.startsWith("/watchlist")) return "← Back to Watchlist";
     if (fromUrl.startsWith("/trending")) return "← Back to Trending";
+    if (fromUrl.startsWith("/?q=")) return "← Back to Search Results";
     return "← Back to Search";
   }
 
@@ -235,7 +234,6 @@ function CardDetailInner() {
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
 
-        {/* Top bar */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <button
             onClick={() => router.push(fromUrl)}
