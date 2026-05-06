@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFees, PSA_TIERS } from "@/lib/fees-context";
+
+interface UsageData {
+  dailyLimit: number | null;
+  dailyRemaining: number | null;
+  dailyReset: number | null;
+  minuteLimit: number | null;
+  minuteRemaining: number | null;
+}
 
 function FeeInput({ label, value, onChange, prefix, suffix, step = 0.01 }: {
   label: string; value: number; onChange: (v: number) => void;
@@ -31,6 +39,9 @@ function FeeInput({ label, value, onChange, prefix, suffix, step = 0.01 }: {
 export default function Header() {
   const [feesPanelOpen, setFeesPanelOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [usagePanelOpen, setUsagePanelOpen] = useState(false);
+  const [usage, setUsage] = useState<UsageData | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
   const { fees, setFees, psaTier, setPsaTier } = useFees();
   const pathname = usePathname();
 
@@ -47,6 +58,54 @@ export default function Header() {
     { href: "/submissions", label: "📦 Submissions" },
     { href: "/profit", label: "💰 Profit" },
   ];
+
+  async function fetchUsage() {
+    setUsageLoading(true);
+    try {
+      const res = await fetch("/api/usage");
+      const json = await res.json();
+      setUsage(json);
+    } catch {
+      // ignore
+    } finally {
+      setUsageLoading(false);
+    }
+  }
+
+  function toggleUsagePanel() {
+    const next = !usagePanelOpen;
+    setUsagePanelOpen(next);
+    setFeesPanelOpen(false);
+    setMobileMenuOpen(false);
+    if (next && !usage) fetchUsage();
+  }
+
+  function getDailyColor() {
+    if (!usage?.dailyRemaining || !usage?.dailyLimit) return "text-zinc-400";
+    const pct = (usage.dailyRemaining / usage.dailyLimit) * 100;
+    if (pct > 50) return "text-emerald-400";
+    if (pct > 20) return "text-yellow-400";
+    return "text-red-400";
+  }
+
+  function getResetTime() {
+    if (!usage?.dailyReset) return null;
+    const resetDate = new Date(usage.dailyReset * 1000);
+    return resetDate.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function getDailyBarWidth() {
+    if (!usage?.dailyRemaining || !usage?.dailyLimit) return "0%";
+    return ((usage.dailyRemaining / usage.dailyLimit) * 100) + "%";
+  }
+
+  function getDailyBarColor() {
+    if (!usage?.dailyRemaining || !usage?.dailyLimit) return "bg-zinc-600";
+    const pct = (usage.dailyRemaining / usage.dailyLimit) * 100;
+    if (pct > 50) return "bg-emerald-400";
+    if (pct > 20) return "bg-yellow-400";
+    return "bg-red-400";
+  }
 
   return (
     <>
@@ -74,8 +133,26 @@ export default function Header() {
           </div>
 
           <div className="flex items-center gap-2">
+
+            {/* API usage button */}
             <button
-              onClick={() => { setFeesPanelOpen(!feesPanelOpen); setMobileMenuOpen(false); }}
+              onClick={toggleUsagePanel}
+              className={"flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors font-mono " +
+                (usagePanelOpen
+                  ? "bg-blue-400/20 border-blue-400/40 text-blue-400"
+                  : "border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600")}
+            >
+              ⚡ API
+              {usage?.dailyRemaining != null && (
+                <span className={"hidden sm:inline text-xs bg-zinc-800 px-1.5 py-0.5 rounded " + getDailyColor()}>
+                  {usage.dailyRemaining.toLocaleString()}
+                </span>
+              )}
+            </button>
+
+            {/* Fees button */}
+            <button
+              onClick={() => { setFeesPanelOpen(!feesPanelOpen); setMobileMenuOpen(false); setUsagePanelOpen(false); }}
               className={"flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors font-mono " +
                 (feesPanelOpen
                   ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-400"
@@ -87,8 +164,9 @@ export default function Header() {
               </span>
             </button>
 
+            {/* Mobile menu button */}
             <button
-              onClick={() => { setMobileMenuOpen(!mobileMenuOpen); setFeesPanelOpen(false); }}
+              onClick={() => { setMobileMenuOpen(!mobileMenuOpen); setFeesPanelOpen(false); setUsagePanelOpen(false); }}
               className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
             >
               {mobileMenuOpen ? "✕" : "☰"}
@@ -115,12 +193,95 @@ export default function Header() {
           </div>
         )}
 
+        {/* API usage panel */}
+        {usagePanelOpen && (
+          <div className="border-t border-zinc-800 bg-[#0d0d14]/95 backdrop-blur">
+            <div className="max-w-7xl mx-auto px-4 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-zinc-600 font-mono uppercase tracking-widest">API Usage</p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={fetchUsage}
+                    disabled={usageLoading}
+                    className="text-xs text-zinc-500 hover:text-white font-mono transition-colors disabled:text-zinc-700"
+                  >
+                    {usageLoading ? "Refreshing..." : "⟳ Refresh"}
+                  </button>
+                  <button onClick={() => setUsagePanelOpen(false)} className="text-xs text-zinc-600 hover:text-zinc-400 font-mono">
+                    Close ✕
+                  </button>
+                </div>
+              </div>
+
+              {usageLoading && !usage && (
+                <div className="text-zinc-600 font-mono text-sm">Loading usage data...</div>
+              )}
+
+              {usage && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                  {/* Daily usage */}
+                  <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Daily Credits</p>
+                      {getResetTime() && (
+                        <p className="text-xs text-zinc-600 font-mono">Resets {getResetTime()}</p>
+                      )}
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <p className={"text-3xl font-black font-mono " + getDailyColor()}>
+                        {usage.dailyRemaining?.toLocaleString() ?? "—"}
+                      </p>
+                      <p className="text-zinc-600 font-mono text-sm mb-1">
+                        / {usage.dailyLimit?.toLocaleString() ?? "—"}
+                      </p>
+                    </div>
+                    <div className="w-full bg-zinc-700 rounded-full h-2 overflow-hidden">
+                      <div
+                        className={"h-full rounded-full transition-all " + getDailyBarColor()}
+                        style={{ width: getDailyBarWidth() }}
+                      />
+                    </div>
+                    {usage.dailyRemaining != null && usage.dailyLimit != null && (
+                      <p className="text-xs text-zinc-600 font-mono">
+                        {((usage.dailyRemaining / usage.dailyLimit) * 100).toFixed(0)}% remaining · {(usage.dailyLimit - usage.dailyRemaining).toLocaleString()} used today
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Per minute usage */}
+                  <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4 space-y-3">
+                    <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Per Minute</p>
+                    <div className="flex items-end gap-2">
+                      <p className="text-3xl font-black font-mono text-blue-400">
+                        {usage.minuteRemaining ?? "—"}
+                      </p>
+                      <p className="text-zinc-600 font-mono text-sm mb-1">
+                        / {usage.minuteLimit ?? "—"}
+                      </p>
+                    </div>
+                    <div className="w-full bg-zinc-700 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-blue-400 transition-all"
+                        style={{ width: usage.minuteLimit ? ((usage.minuteRemaining ?? 0) / usage.minuteLimit * 100) + "%" : "0%" }}
+                      />
+                    </div>
+                    <p className="text-xs text-zinc-600 font-mono">
+                      Resets every 60 seconds
+                    </p>
+                  </div>
+
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Fee panel */}
         {feesPanelOpen && (
           <div className="border-t border-zinc-800 bg-[#0d0d14]/95 backdrop-blur">
             <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
 
-              {/* PSA Tier selector */}
               <div>
                 <p className="text-xs text-zinc-600 font-mono uppercase tracking-widest mb-2">PSA Submission Tier</p>
                 <div className="flex flex-wrap gap-2">
@@ -140,7 +301,6 @@ export default function Header() {
                 </div>
               </div>
 
-              {/* Fee inputs */}
               <div className="flex flex-wrap gap-4 items-end">
                 <div>
                   <p className="text-xs text-zinc-600 font-mono uppercase tracking-widest mb-2">Grading Costs</p>
