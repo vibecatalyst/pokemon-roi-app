@@ -144,6 +144,19 @@ function LeaderboardInner() {
       });
   }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw]);
 
+  // Set overview stats
+  const setStats = useMemo(() => {
+    if (cards.length === 0) return null;
+    const withPsa10 = cards.filter(c => c.psa10Price > 0);
+    const enriched = withPsa10.map(c => ({ ...c, ...calcProfit(c, fees) }));
+    const profitable = enriched.filter(e => e.profit > 0);
+    const avgRoi = enriched.length > 0 ? enriched.reduce((s, e) => s + e.roi, 0) / enriched.length : 0;
+    const bestCard = [...enriched].sort((a, b) => b.roi - a.roi)[0];
+    const withPsa9 = cards.filter(c => (c.psa9Price ?? 0) > 0);
+    const profitableP9 = withPsa9.map(c => ({ ...c, ...calcProfit(c, fees) })).filter(e => e.profit9 > 0);
+    return { withPsa10, profitable, avgRoi, bestCard, withPsa9, profitableP9 };
+  }, [cards, fees]);
+
   function exportToCSV() {
     const headers = ["Rank", "Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "PSA 9 Price", "Total Cost", "Sale Proceeds", "Net Profit", "ROI %", "PSA 9 Profit", "PSA 9 ROI %", "Multiple", "Image URL"];
     const rows = filtered.map((card, idx) => [
@@ -202,6 +215,7 @@ function LeaderboardInner() {
           <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click any card to see full details</p>
         </div>
 
+        {/* Controls */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
           <div className="flex-1 min-w-48">
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
@@ -285,6 +299,63 @@ function LeaderboardInner() {
           </div>
         </div>
 
+        {/* Set overview stats */}
+        {!loading && setStats && (
+          <div className="mb-6 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-white font-mono">{cards.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Total cards</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-yellow-400 font-mono">{setStats.withPsa10.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">With PSA 10 data</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-emerald-400 font-mono">{setStats.profitable.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Profitable to grade</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className={"text-2xl font-black font-mono " + (setStats.avgRoi >= 0 ? "text-emerald-400" : "text-red-400")}>
+                  {setStats.avgRoi >= 0 ? "+" : ""}{setStats.avgRoi.toFixed(0)}%
+                </p>
+                <p className="text-xs text-zinc-600 mt-0.5">Average ROI</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-blue-400 font-mono">{setStats.withPsa9.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">With PSA 9 data</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-emerald-400 font-mono">{setStats.profitableP9.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Profitable at PSA 9</p>
+              </div>
+            </div>
+
+            {/* Best card */}
+            {setStats.bestCard && (
+              <div
+                onClick={() => router.push("/card/" + setStats.bestCard.tcgPlayerId)}
+                className="bg-yellow-400/5 border border-yellow-400/10 hover:border-yellow-400/30 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-colors"
+              >
+                {setStats.bestCard.image && (
+                  <img src={setStats.bestCard.image} alt={setStats.bestCard.name} className="w-12 rounded flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-zinc-500 font-mono mb-0.5">Best ROI card in set</p>
+                  <p className="text-sm font-bold text-white truncate">{setStats.bestCard.name}</p>
+                  <p className="text-xs text-zinc-600">{setStats.bestCard.rarity} · #{setStats.bestCard.number}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xl font-black text-emerald-400 font-mono">+{setStats.bestCard.roi.toFixed(0)}%</p>
+                  <p className="text-xs text-emerald-400 font-mono">+${setStats.bestCard.profit.toFixed(2)} profit</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">PSA 10: ${setStats.bestCard.psa10Price.toFixed(2)}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Loading */}
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">⚡</div>
@@ -292,10 +363,12 @@ function LeaderboardInner() {
           </div>
         )}
 
+        {/* Error */}
         {error && (
           <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{error}</div>
         )}
 
+        {/* Empty states */}
         {!loading && !selectedSet && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏆</div>
@@ -310,6 +383,7 @@ function LeaderboardInner() {
           </div>
         )}
 
+        {/* Table */}
         {filtered.length > 0 && (
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
