@@ -45,24 +45,21 @@ export default function Watchlist() {
     const updated = [...items];
     for (let i = 0; i < updated.length; i++) {
       try {
-        const res = await fetch(`/api/card?id=${updated[i].tcgPlayerId}`);
+        const res = await fetch("/api/card?id=" + updated[i].tcgPlayerId);
         const json = await res.json();
         const raw = json.data;
         const cardData = Array.isArray(raw) ? raw[0] : raw;
         if (cardData) {
           const prices = (cardData.prices as Record<string, number>) ?? {};
           const rawPrice = prices.market ?? prices.low ?? updated[i].rawPrice;
-
           const ebay = (cardData.ebay as Record<string, unknown>) ?? {};
           const salesByGrade = (ebay.salesByGrade as Record<string, Record<string, unknown>>) ?? {};
           const psa10 = salesByGrade.psa10 ?? {};
           const psa9 = salesByGrade.psa9 ?? {};
           const smart10 = (psa10.smartMarketPrice as Record<string, number>) ?? {};
           const smart9 = (psa9.smartMarketPrice as Record<string, number>) ?? {};
-
           const psa10Price = smart10.price ?? (psa10.marketPrice7Day as number) ?? updated[i].psa10Price;
           const psa9Price = smart9.price ?? (psa9.marketPrice7Day as number) ?? updated[i].psa9Price;
-
           updated[i] = { ...updated[i], rawPrice, psa10Price, psa9Price };
         }
       } catch {
@@ -88,6 +85,10 @@ export default function Watchlist() {
     }
   }
 
+  function cardUrl(tcgPlayerId: string) {
+    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/watchlist");
+  }
+
   const sorted = useMemo(() => {
     return [...items].sort((a, b) => {
       const roiA = calcROI(a.psa10Price, a.rawPrice, fees).roi;
@@ -111,14 +112,9 @@ export default function Watchlist() {
       const r9 = calcROI(item.psa9Price, item.rawPrice, fees);
       return [
         item.name, item.set, item.rarity, item.number,
-        item.rawPrice.toFixed(2),
-        item.psa10Price.toFixed(2),
-        item.psa9Price.toFixed(2),
-        r10.totalCosts.toFixed(2),
-        r10.profit.toFixed(2),
-        r10.roi.toFixed(1) + "%",
-        r9.profit.toFixed(2),
-        r9.roi.toFixed(1) + "%",
+        item.rawPrice.toFixed(2), item.psa10Price.toFixed(2), item.psa9Price.toFixed(2),
+        r10.totalCosts.toFixed(2), r10.profit.toFixed(2), r10.roi.toFixed(1) + "%",
+        r9.profit.toFixed(2), r9.roi.toFixed(1) + "%",
         new Date(item.addedAt).toLocaleDateString(),
       ];
     });
@@ -137,7 +133,7 @@ export default function Watchlist() {
     return (
       <th
         onClick={() => toggleSort(field)}
-        className={`text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none ${active ? "text-yellow-400" : "text-zinc-500 hover:text-white"}`}
+        className={"text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none " + (active ? "text-yellow-400" : "text-zinc-500 hover:text-white")}
       >
         {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
       </th>
@@ -169,7 +165,6 @@ export default function Watchlist() {
 
           {items.length > 0 && (
             <div className="flex items-center gap-3 flex-wrap">
-              {/* Sort controls */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-zinc-500 font-mono">SORT</label>
                 <select
@@ -191,23 +186,18 @@ export default function Watchlist() {
                 </button>
               </div>
 
-              {/* Refresh button */}
               <button
                 onClick={handleRefreshAll}
                 disabled={refreshing}
                 className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-600 border border-zinc-700 text-zinc-300 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
               >
                 {refreshing ? (
-                  <>
-                    <span className="animate-spin inline-block">⟳</span>
-                    {refreshProgress}/{items.length}
-                  </>
+                  <><span className="animate-spin inline-block">⟳</span> {refreshProgress}/{items.length}</>
                 ) : (
                   <>⟳ Refresh Prices</>
                 )}
               </button>
 
-              {/* Export button */}
               <button
                 onClick={exportToCSV}
                 className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2 rounded-lg transition-colors text-sm"
@@ -243,13 +233,13 @@ export default function Watchlist() {
                     <p className="text-xs text-zinc-600 mt-1">Profitable to grade</p>
                   </div>
                   <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className={`text-2xl font-black font-mono ${totalProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    <p className={"text-2xl font-black font-mono " + (totalProfit >= 0 ? "text-emerald-400" : "text-red-400")}>
                       {totalProfit >= 0 ? "+" : ""}${totalProfit.toFixed(0)}
                     </p>
                     <p className="text-xs text-zinc-600 mt-1">Total potential profit</p>
                   </div>
                   <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className={`text-2xl font-black font-mono ${avgRoi >= 0 ? "text-yellow-400" : "text-red-400"}`}>
+                    <p className={"text-2xl font-black font-mono " + (avgRoi >= 0 ? "text-yellow-400" : "text-red-400")}>
                       {avgRoi >= 0 ? "+" : ""}{avgRoi.toFixed(0)}%
                     </p>
                     <p className="text-xs text-zinc-600 mt-1">Average ROI</p>
@@ -313,7 +303,7 @@ export default function Watchlist() {
                               {isExpanded ? "▼" : "▶"}
                             </button>
                           </td>
-                          <td className="px-4 py-3 cursor-pointer" onClick={() => router.push(`/card/${item.tcgPlayerId}`)}>
+                          <td className="px-4 py-3 cursor-pointer" onClick={() => router.push(cardUrl(item.tcgPlayerId))}>
                             <div className="flex items-center gap-3">
                               {item.image && <img src={item.image} alt={item.name} className="w-10 rounded" />}
                               <div>
@@ -323,28 +313,28 @@ export default function Watchlist() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">
-                            {item.rawPrice > 0 ? `$${item.rawPrice.toFixed(2)}` : "N/A"}
+                            {item.rawPrice > 0 ? "$" + item.rawPrice.toFixed(2) : "N/A"}
                           </td>
                           <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">
-                            {item.psa10Price > 0 ? `$${item.psa10Price.toFixed(2)}` : "N/A"}
+                            {item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}
                           </td>
                           <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
-                            {hasPsa9 ? `$${item.psa9Price.toFixed(2)}` : "N/A"}
+                            {hasPsa9 ? "$" + item.psa9Price.toFixed(2) : "N/A"}
                           </td>
                           <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">
                             ${r10.totalCosts.toFixed(2)}
                           </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${roi10Color}`}>
-                            {item.psa10Price > 0 ? `${r10.profit >= 0 ? "+" : ""}$${r10.profit.toFixed(2)}` : "N/A"}
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
+                            {item.psa10Price > 0 ? (r10.profit >= 0 ? "+" : "") + "$" + r10.profit.toFixed(2) : "N/A"}
                           </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${roi10Color}`}>
-                            {item.psa10Price > 0 ? `${r10.roi >= 0 ? "+" : ""}${r10.roi.toFixed(0)}%` : "N/A"}
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
+                            {item.psa10Price > 0 ? (r10.roi >= 0 ? "+" : "") + r10.roi.toFixed(0) + "%" : "N/A"}
                           </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${hasPsa9 ? roi9Color : "text-zinc-600"}`}>
-                            {hasPsa9 ? `${r9.profit >= 0 ? "+" : ""}$${r9.profit.toFixed(2)}` : "N/A"}
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>
+                            {hasPsa9 ? (r9.profit >= 0 ? "+" : "") + "$" + r9.profit.toFixed(2) : "N/A"}
                           </td>
-                          <td className={`px-4 py-3 text-right text-sm font-mono font-bold ${hasPsa9 ? roi9Color : "text-zinc-600"}`}>
-                            {hasPsa9 ? `${r9.roi >= 0 ? "+" : ""}${r9.roi.toFixed(0)}%` : "N/A"}
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>
+                            {hasPsa9 ? (r9.roi >= 0 ? "+" : "") + r9.roi.toFixed(0) + "%" : "N/A"}
                           </td>
                           <td className="px-4 py-3 text-right text-xs font-mono text-zinc-600">
                             {new Date(item.addedAt).toLocaleDateString()}
@@ -359,13 +349,11 @@ export default function Watchlist() {
                           </td>
                         </tr>
 
-                        {/* Expanded grade comparison */}
                         {isExpanded && (
-                          <tr key={`${item.tcgPlayerId}-expanded`} className="border-b border-zinc-800">
+                          <tr key={item.tcgPlayerId + "-expanded"} className="border-b border-zinc-800">
                             <td colSpan={12} className="px-4 py-4 bg-zinc-900/40">
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-                                {/* PSA 10 panel */}
                                 {item.psa10Price > 0 && (
                                   <div className="bg-yellow-400/5 border border-yellow-400/10 rounded-xl p-4 space-y-2">
                                     <div className="flex justify-between items-center">
@@ -383,13 +371,13 @@ export default function Watchlist() {
                                       </div>
                                       <div className="bg-zinc-800/40 rounded-lg p-2">
                                         <p className="text-zinc-600">Profit</p>
-                                        <p className={`font-bold ${r10.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                        <p className={"font-bold " + (r10.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
                                           {r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)}
                                         </p>
                                       </div>
                                       <div className="bg-zinc-800/40 rounded-lg p-2">
                                         <p className="text-zinc-600">ROI</p>
-                                        <p className={`font-bold ${r10.roi >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                        <p className={"font-bold " + (r10.roi >= 0 ? "text-emerald-400" : "text-red-400")}>
                                           {r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%
                                         </p>
                                       </div>
@@ -400,7 +388,6 @@ export default function Watchlist() {
                                   </div>
                                 )}
 
-                                {/* PSA 9 panel */}
                                 {hasPsa9 && (
                                   <div className="bg-blue-400/5 border border-blue-400/10 rounded-xl p-4 space-y-2">
                                     <div className="flex justify-between items-center">
@@ -418,13 +405,13 @@ export default function Watchlist() {
                                       </div>
                                       <div className="bg-zinc-800/40 rounded-lg p-2">
                                         <p className="text-zinc-600">Profit</p>
-                                        <p className={`font-bold ${r9.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                        <p className={"font-bold " + (r9.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
                                           {r9.profit >= 0 ? "+" : ""}${r9.profit.toFixed(2)}
                                         </p>
                                       </div>
                                       <div className="bg-zinc-800/40 rounded-lg p-2">
                                         <p className="text-zinc-600">ROI</p>
-                                        <p className={`font-bold ${r9.roi >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                        <p className={"font-bold " + (r9.roi >= 0 ? "text-emerald-400" : "text-red-400")}>
                                           {r9.roi >= 0 ? "+" : ""}{r9.roi.toFixed(0)}%
                                         </p>
                                       </div>
@@ -436,7 +423,6 @@ export default function Watchlist() {
                                 )}
                               </div>
 
-                              {/* Verdict */}
                               {item.psa10Price > 0 && hasPsa9 && (
                                 <div className="mt-3 bg-zinc-800/40 border border-zinc-700 rounded-xl p-3">
                                   <p className="text-xs font-mono text-zinc-500 mb-1">Verdict</p>
@@ -453,8 +439,8 @@ export default function Watchlist() {
                                           : !bothProfitable && r9.profit > 0
                                           ? "✅ Even a PSA 9 is profitable on this card"
                                           : diff > 20
-                                          ? `✅ PSA 10 worth chasing — $${diff.toFixed(2)} more than a 9`
-                                          : `🟡 PSA 9 nearly as good — only $${diff.toFixed(2)} less than a 10`}
+                                          ? "✅ PSA 10 worth chasing — $" + diff.toFixed(2) + " more than a 9"
+                                          : "🟡 PSA 9 nearly as good — only $" + diff.toFixed(2) + " less than a 10"}
                                       </p>
                                     );
                                   })()}
@@ -462,7 +448,7 @@ export default function Watchlist() {
                               )}
 
                               <button
-                                onClick={() => router.push(`/card/${item.tcgPlayerId}`)}
+                                onClick={() => router.push(cardUrl(item.tcgPlayerId))}
                                 className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors font-mono"
                               >
                                 View full detail & price history →
@@ -479,7 +465,7 @@ export default function Watchlist() {
             <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
               <span className="text-xs text-zinc-600 font-mono">
                 {sorted.length} cards · click ▶ to expand · click name to view details
-                {lastRefreshed && ` · refreshed ${lastRefreshed.toLocaleTimeString()}`}
+                {lastRefreshed && " · refreshed " + lastRefreshed.toLocaleTimeString()}
               </span>
               <button
                 onClick={exportToCSV}
