@@ -1,39 +1,106 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import SearchBar from "@/components/SearchBar";
 import { CardData } from "@/lib/types";
 import { useFees } from "@/lib/fees-context";
+import { getWatchlist, WatchlistItem } from "@/lib/watchlist";
+import { getSubmissions, Submission } from "@/lib/submissions";
 
-export default function Home() {
+function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFees>["fees"]) {
+  const totalCosts = rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
+  const saleProceeds = price * (1 - fees.ebayFeePercent / 100);
+  const profit = saleProceeds - totalCosts;
+  const roi = totalCosts > 0 ? (profit / totalCosts) * 100 : 0;
+  return { profit, roi, totalCosts, saleProceeds };
+}
+
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <p className="text-xs text-zinc-500 font-mono mb-1">{label}</p>
+      <p className={`text-2xl font-black font-mono ${color ?? "text-white"}`}>{value}</p>
+      {sub && <p className="text-xs text-zinc-600 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  preparing: "📦 Preparing",
+  shipped: "🚚 Shipped",
+  received: "📬 Received",
+  grading: "🔍 Grading",
+  graded: "⭐ Graded",
+  returned: "✅ Returned",
+};
+
+export default function Dashboard() {
   const [results, setResults] = useState<CardData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [mounted, setMounted] = useState(false);
   const { fees } = useFees();
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+    setWatchlist(getWatchlist());
+    setSubmissions(getSubmissions());
+  }, []);
+
+  // Watchlist stats
+  const watchlistStats = mounted ? (() => {
+    const profitable = watchlist.filter(i => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
+    const totalProfit = watchlist.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
+    const avgRoi = watchlist.length > 0 ? watchlist.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).roi, 0) / watchlist.length : 0;
+    const topCard = [...watchlist].sort((a, b) => calcROI(b.psa10Price, b.rawPrice, fees).roi - calcROI(a.psa10Price, a.rawPrice, fees).roi)[0];
+    return { profitable, totalProfit, avgRoi, topCard };
+  })() : null;
+
+  // Submission stats
+  const submissionStats = mounted ? (() => {
+    const active = submissions.filter(s => s.status !== "returned");
+    const returned = submissions.filter(s => s.status === "returned" && s.soldPrice);
+    const totalInvested = active.reduce((s, i) => s + i.rawPrice + i.gradingFee + i.shippingCost, 0);
+    const realizedProfit = returned.reduce((s, i) => {
+      const proceeds = (i.soldPrice ?? 0) * (1 - fees.ebayFeePercent / 100);
+      const cost = i.rawPrice + i.gradingFee + i.shippingCost;
+      return s + proceeds - cost;
+    }, 0);
+    return { active, totalInvested, realizedProfit };
+  })() : null;
+
+  // Top watchlist opportunities
+  const topOpportunities = mounted
+    ? [...watchlist]
+        .filter(i => i.psa10Price > 0)
+        .map(i => ({ ...i, ...calcROI(i.psa10Price, i.rawPrice, fees) }))
+        .sort((a, b) => b.roi - a.roi)
+        .slice(0, 5)
+    : [];
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-yellow-400/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-red-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl" />
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
 
         {/* Hero */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 bg-yellow-400/10 border border-yellow-400/20 rounded-full px-4 py-1.5 mb-6">
-            <span className="text-yellow-400 text-xs font-mono tracking-widest uppercase">PSA Grading ROI Calculator</span>
-          </div>
-          <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tight" style={{ letterSpacing: "0.02em" }}>
+        <div className="text-center mb-10">
+          <h1 className="text-5xl md:text-7xl font-black mb-3 tracking-tight" style={{ letterSpacing: "0.02em" }}>
             <span className="text-white">POKE</span>
             <span className="text-yellow-400">ROI</span>
           </h1>
           <p className="text-zinc-400 text-lg max-w-md mx-auto">
-            Search any Pokemon card, see raw vs PSA 10 prices, and calculate your real profit after all fees.
+            Your Pokémon card grading command center
           </p>
         </div>
 
@@ -52,12 +119,10 @@ export default function Home() {
           </div>
         )}
 
-        {/* Results grid */}
+        {/* Search results */}
         {results.length > 0 && (
-          <div className="mt-8">
-            <p className="text-zinc-500 text-sm mb-4 font-mono">
-              {results.length} cards found — click a card to see ROI &amp; price history
-            </p>
+          <div className="mt-6">
+            <p className="text-zinc-500 text-sm mb-4 font-mono">{results.length} cards found — click to view ROI</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {results.map((card, idx) => (
                 <button
@@ -65,14 +130,10 @@ export default function Home() {
                   onClick={() => router.push(`/card/${card.tcgPlayerId}`)}
                   className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-yellow-400/40 rounded-xl p-3 text-left transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
                 >
-                  {card.image && (
-                    <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />
-                  )}
+                  {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />}
                   <p className="text-sm font-semibold text-white truncate">{card.name}</p>
                   <p className="text-xs text-zinc-500 truncate">{card.set}</p>
-                  {card.rawPrice > 0 && (
-                    <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>
-                  )}
+                  {card.rawPrice > 0 && <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl">
                     <span className="text-xs text-white font-mono bg-yellow-400/20 border border-yellow-400/30 px-2 py-1 rounded-lg">
                       View ROI →
@@ -84,11 +145,172 @@ export default function Home() {
           </div>
         )}
 
-        {/* Empty state */}
-        {!loading && results.length === 0 && (
-          <div className="mt-16 text-center">
-            <div className="text-6xl mb-4">⚡</div>
-            <p className="text-zinc-600 font-mono text-sm">Search for a card to get started</p>
+        {/* Dashboard content — only show when not searching */}
+        {results.length === 0 && mounted && (
+          <div className="mt-10 space-y-8">
+
+            {/* Quick nav */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { href: "/leaderboard", icon: "🏆", label: "Top ROI", sub: "Best cards to grade by set" },
+                { href: "/trending", icon: "📈", label: "Trending", sub: "Rising PSA 10 prices" },
+                { href: "/watchlist", icon: "★", label: "Watchlist", sub: `${watchlist.length} cards saved` },
+                { href: "/submissions", icon: "📦", label: "Submissions", sub: `${submissionStats?.active.length ?? 0} in progress` },
+              ].map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors group"
+                >
+                  <div className="text-2xl mb-2">{item.icon}</div>
+                  <p className="text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">{item.label}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">{item.sub}</p>
+                </Link>
+              ))}
+            </div>
+
+            {/* Watchlist summary */}
+            {watchlist.length > 0 && watchlistStats && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-black text-white">Watchlist Summary</h2>
+                  <Link href="/watchlist" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                    View all {watchlist.length} cards →
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <StatCard label="Cards watching" value={String(watchlist.length)} />
+                  <StatCard
+                    label="Profitable to grade"
+                    value={String(watchlistStats.profitable.length)}
+                    sub={`${((watchlistStats.profitable.length / watchlist.length) * 100).toFixed(0)}% of watchlist`}
+                    color="text-emerald-400"
+                  />
+                  <StatCard
+                    label="Total potential profit"
+                    value={`${watchlistStats.totalProfit >= 0 ? "+" : ""}$${watchlistStats.totalProfit.toFixed(0)}`}
+                    color={watchlistStats.totalProfit >= 0 ? "text-emerald-400" : "text-red-400"}
+                  />
+                  <StatCard
+                    label="Average ROI"
+                    value={`${watchlistStats.avgRoi >= 0 ? "+" : ""}${watchlistStats.avgRoi.toFixed(0)}%`}
+                    color={watchlistStats.avgRoi >= 0 ? "text-yellow-400" : "text-red-400"}
+                  />
+                </div>
+
+                {/* Top opportunities */}
+                {topOpportunities.length > 0 && (
+                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800">
+                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Top Opportunities in Watchlist</p>
+                    </div>
+                    <div className="divide-y divide-zinc-800/50">
+                      {topOpportunities.map((card, idx) => {
+                        const roiColor = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
+                        return (
+                          <div
+                            key={card.tcgPlayerId}
+                            onClick={() => router.push(`/card/${card.tcgPlayerId}`)}
+                            className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                          >
+                            <span className="text-zinc-600 font-mono text-sm w-4">{idx + 1}</span>
+                            {card.image && <img src={card.image} alt={card.name} className="w-8 rounded flex-shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">{card.name}</p>
+                              <p className="text-xs text-zinc-600 truncate">{card.set}</p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className={`text-sm font-black font-mono ${roiColor}`}>
+                                {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
+                              </p>
+                              <p className={`text-xs font-mono ${roiColor}`}>
+                                {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Submissions summary */}
+            {submissions.length > 0 && submissionStats && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-black text-white">Submissions</h2>
+                  <Link href="/submissions" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                    View all →
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <StatCard label="Total submitted" value={String(submissions.length)} />
+                  <StatCard label="In progress" value={String(submissionStats.active.length)} color="text-orange-400" />
+                  <StatCard label="Capital at risk" value={`$${submissionStats.totalInvested.toFixed(0)}`} color="text-yellow-400" />
+                  <StatCard
+                    label="Realized profit"
+                    value={`${submissionStats.realizedProfit >= 0 ? "+" : ""}$${submissionStats.realizedProfit.toFixed(0)}`}
+                    color={submissionStats.realizedProfit >= 0 ? "text-emerald-400" : "text-red-400"}
+                  />
+                </div>
+
+                {/* Active submissions */}
+                {submissionStats.active.length > 0 && (
+                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800">
+                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Active Submissions</p>
+                    </div>
+                    <div className="divide-y divide-zinc-800/50">
+                      {submissionStats.active.slice(0, 5).map((sub) => (
+                        <div
+                          key={sub.id}
+                          onClick={() => router.push("/submissions")}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                        >
+                          {sub.image && <img src={sub.image} alt={sub.name} className="w-8 rounded flex-shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{sub.name}</p>
+                            <p className="text-xs text-zinc-600 truncate">{sub.set}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-mono text-zinc-400">{STATUS_LABELS[sub.status]}</p>
+                            <p className="text-xs font-mono text-zinc-600">${(sub.rawPrice + sub.gradingFee + sub.shippingCost).toFixed(2)} invested</p>
+                          </div>
+                        </div>
+                      ))}
+                      {submissionStats.active.length > 5 && (
+                        <div className="px-4 py-3 text-center">
+                          <Link href="/submissions" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                            +{submissionStats.active.length - 5} more →
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Empty state — new user */}
+            {watchlist.length === 0 && submissions.length === 0 && (
+              <div className="text-center py-10">
+                <div className="text-5xl mb-4">⚡</div>
+                <p className="text-zinc-500 font-mono text-sm mb-2">Welcome to PokeROI</p>
+                <p className="text-zinc-700 text-xs mb-6 max-w-sm mx-auto">
+                  Search for a card above to get started, or browse the Top ROI leaderboard to find grading opportunities
+                </p>
+                <div className="flex gap-3 justify-center flex-wrap">
+                  <Link href="/leaderboard" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
+                    🏆 Browse Top ROI
+                  </Link>
+                  <Link href="/trending" className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
+                    📈 See Trending Cards
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
