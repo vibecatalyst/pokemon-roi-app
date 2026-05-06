@@ -144,7 +144,6 @@ function LeaderboardInner() {
       });
   }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw]);
 
-  // Set overview stats
   const setStats = useMemo(() => {
     if (cards.length === 0) return null;
     const withPsa10 = cards.filter(c => c.psa10Price > 0);
@@ -178,6 +177,10 @@ function LeaderboardInner() {
     a.download = selectedSet + "-ROI.csv";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function cardUrl(tcgPlayerId: string) {
+    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/leaderboard?" + searchParams.toString());
   }
 
   function SortTh({ label, field }: { label: string; field: typeof sortBy }) {
@@ -331,10 +334,9 @@ function LeaderboardInner() {
               </div>
             </div>
 
-            {/* Best card */}
             {setStats.bestCard && (
               <div
-                onClick={() => router.push("/card/" + setStats.bestCard.tcgPlayerId)}
+                onClick={() => router.push(cardUrl(setStats.bestCard.tcgPlayerId))}
                 className="bg-yellow-400/5 border border-yellow-400/10 hover:border-yellow-400/30 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-colors"
               >
                 {setStats.bestCard.image && (
@@ -410,7 +412,7 @@ function LeaderboardInner() {
                     return (
                       <tr
                         key={card.id}
-                        onClick={() => router.push("/card/" + card.tcgPlayerId)}
+                        onClick={() => router.push(cardUrl(card.tcgPlayerId))}
                         className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                       >
                         <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>

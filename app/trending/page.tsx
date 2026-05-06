@@ -21,11 +21,9 @@ function mapTrendingCard(c: Record<string, unknown>): TrendingCard {
   const ebay = (c.ebay as Record<string, unknown>) ?? {};
   const salesByGrade = (ebay.salesByGrade as Record<string, Record<string, unknown>>) ?? {};
   const salesVelocity = (ebay.salesVelocity as Record<string, number>) ?? {};
-
   const psa10 = salesByGrade.psa10 ?? {};
   const psa9 = salesByGrade.psa9 ?? {};
   const psa9Smart = (psa9.smartMarketPrice as Record<string, number>) ?? {};
-
   return {
     ...base,
     psa10Trend: String(psa10.marketTrend ?? "unknown"),
@@ -105,6 +103,10 @@ export default function Trending() {
     };
   }, [cards]);
 
+  function cardUrl(tcgPlayerId: string) {
+    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/trending");
+  }
+
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="fixed inset-0 pointer-events-none">
@@ -127,7 +129,6 @@ export default function Trending() {
 
         {/* Controls */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
-
           <div className="flex-1 min-w-48">
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
             <select
@@ -228,10 +229,9 @@ export default function Trending() {
               return (
                 <div
                   key={card.id}
-                  onClick={() => router.push("/card/" + card.tcgPlayerId)}
+                  onClick={() => router.push(cardUrl(card.tcgPlayerId))}
                   className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-2xl overflow-hidden transition-all cursor-pointer hover:scale-[1.02] hover:bg-zinc-800/60"
                 >
-                  {/* Card image */}
                   <div className="relative">
                     {card.image && (
                       <img src={card.image} alt={card.name} className="w-full object-cover" />
@@ -241,14 +241,12 @@ export default function Trending() {
                     </div>
                   </div>
 
-                  {/* Card info */}
                   <div className="p-4 space-y-3">
                     <div>
                       <p className="font-bold text-white text-sm leading-tight">{card.name}</p>
                       <p className="text-xs text-zinc-600 mt-0.5">{card.rarity} · #{card.number}</p>
                     </div>
 
-                    {/* Prices */}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="bg-zinc-800/50 rounded-lg p-2">
                         <p className="text-xs text-zinc-600 font-mono">Raw</p>
@@ -260,7 +258,6 @@ export default function Trending() {
                       </div>
                     </div>
 
-                    {/* 7 day price */}
                     {card.psa10MarketPrice7Day > 0 && (
                       <div className="bg-zinc-800/30 rounded-lg px-3 py-2 flex justify-between items-center">
                         <span className="text-xs text-zinc-500 font-mono">7-day market</span>
@@ -268,7 +265,6 @@ export default function Trending() {
                       </div>
                     )}
 
-                    {/* Sales velocity */}
                     <div className="flex justify-between items-center">
                       <div className="text-center">
                         <p className="text-xs text-zinc-600 font-mono">Daily</p>
@@ -286,8 +282,7 @@ export default function Trending() {
                       </div>
                     </div>
 
-                    {/* Click hint */}
-                    <div className="text-center">
+                    <div className="text-center pt-1">
                       <span className="text-xs text-zinc-700 font-mono">Click to view full ROI →</span>
                     </div>
                   </div>
