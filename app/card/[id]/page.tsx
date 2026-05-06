@@ -206,8 +206,10 @@ function CardDetailInner() {
     if (fromUrl.startsWith("/leaderboard")) return "← Back to Leaderboard";
     if (fromUrl.startsWith("/watchlist")) return "← Back to Watchlist";
     if (fromUrl.startsWith("/trending")) return "← Back to Trending";
+    if (fromUrl.startsWith("/submissions")) return "← Back to Submissions";
+    if (fromUrl.startsWith("/profit")) return "← Back to Profit";
     if (fromUrl.startsWith("/?q=")) return "← Back to Search Results";
-    return "← Back to Search";
+    return "← Back";
   }
 
   return (

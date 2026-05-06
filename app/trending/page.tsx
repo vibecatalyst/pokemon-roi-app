@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { CardData } from "@/lib/types";
 import { addToWatchlist, removeFromWatchlist, isInWatchlist } from "@/lib/watchlist";
@@ -44,17 +44,32 @@ const TREND_CONFIG = {
   unknown: { label: "— No data", color: "text-zinc-600", bg: "bg-zinc-800/30 border-zinc-700/30" },
 };
 
-export default function Trending() {
+function TrendingInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [sets, setSets] = useState<{ name: string; id: string }[]>([]);
-  const [selectedSet, setSelectedSet] = useState("");
+  const [selectedSet, setSelectedSet] = useState(searchParams.get("set") ?? "");
   const [cards, setCards] = useState<TrendingCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [setsLoading, setSetsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [trendFilter, setTrendFilter] = useState<"all" | "up" | "down" | "stable">("up");
-  const [sortBy, setSortBy] = useState<"volume" | "velocity" | "price">("volume");
+  const [trendFilter, setTrendFilter] = useState<"all" | "up" | "down" | "stable">(
+    (searchParams.get("trend") as "all" | "up" | "down" | "stable") ?? "up"
+  );
+  const [sortBy, setSortBy] = useState<"volume" | "velocity" | "price">(
+    (searchParams.get("sort") as "volume" | "velocity" | "price") ?? "volume"
+  );
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
-  const router = useRouter();
+
+  function updateUrl(params: Record<string, string>) {
+    const current = new URLSearchParams(searchParams.toString());
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) current.set(k, v);
+      else current.delete(k);
+    });
+    router.replace("/trending?" + current.toString(), { scroll: false });
+  }
 
   useEffect(() => {
     fetch("/api/sets")
@@ -66,6 +81,14 @@ export default function Trending() {
       })
       .catch(() => setSetsLoading(false));
   }, []);
+
+  useEffect(() => {
+    const setFromUrl = searchParams.get("set");
+    if (setFromUrl) {
+      setSelectedSet(setFromUrl);
+      fetchCards(setFromUrl);
+    }
+  }, [searchParams.get("set")]);
 
   async function fetchCards(setName: string) {
     setLoading(true);
@@ -88,6 +111,22 @@ export default function Trending() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSetChange(setName: string) {
+    setSelectedSet(setName);
+    updateUrl({ set: setName });
+    if (setName) fetchCards(setName);
+  }
+
+  function handleTrendChange(trend: typeof trendFilter) {
+    setTrendFilter(trend);
+    updateUrl({ trend });
+  }
+
+  function handleSortChange(sort: typeof sortBy) {
+    setSortBy(sort);
+    updateUrl({ sort });
   }
 
   function toggleWatch(e: React.MouseEvent, card: TrendingCard) {
@@ -134,7 +173,7 @@ export default function Trending() {
   }, [cards]);
 
   function cardUrl(tcgPlayerId: string) {
-    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/trending");
+    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/trending?" + searchParams.toString());
   }
 
   return (
@@ -162,7 +201,7 @@ export default function Trending() {
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
             <select
               value={selectedSet}
-              onChange={(e) => { setSelectedSet(e.target.value); fetchCards(e.target.value); }}
+              onChange={(e) => handleSetChange(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
               disabled={setsLoading}
             >
@@ -177,7 +216,7 @@ export default function Trending() {
               {(["all", "up", "stable", "down"] as const).map((t) => (
                 <button
                   key={t}
-                  onClick={() => setTrendFilter(t)}
+                  onClick={() => handleTrendChange(t)}
                   className={"px-3 py-2.5 rounded-lg text-sm font-mono border transition-colors " +
                     (trendFilter === t
                       ? t === "up" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
@@ -196,7 +235,7 @@ export default function Trending() {
             <label className="block text-xs text-zinc-500 font-mono mb-1">SORT BY</label>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "volume" | "velocity" | "price")}
+              onChange={(e) => handleSortChange(e.target.value as typeof sortBy)}
               className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
             >
               <option value="volume">Daily Volume</option>
@@ -259,18 +298,13 @@ export default function Trending() {
                   onClick={() => router.push(cardUrl(card.tcgPlayerId))}
                   className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-2xl overflow-hidden transition-all cursor-pointer hover:scale-[1.02] hover:bg-zinc-800/60"
                 >
-                  {/* Image with overlays */}
                   <div className="relative">
                     {card.image && (
                       <img src={card.image} alt={card.name} className="w-full object-cover" />
                     )}
-
-                    {/* Trend badge — top right */}
                     <div className={"absolute top-2 right-2 text-xs font-bold px-2 py-1 rounded-full border backdrop-blur-sm " + trend.bg + " " + trend.color}>
                       {trend.label}
                     </div>
-
-                    {/* Watchlist star — top left with high contrast */}
                     <button
                       onClick={(e) => toggleWatch(e, card)}
                       title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
@@ -283,7 +317,6 @@ export default function Trending() {
                     </button>
                   </div>
 
-                  {/* Card info */}
                   <div className="p-4 space-y-3">
                     <div>
                       <p className="font-bold text-white text-sm leading-tight">{card.name}</p>
@@ -336,5 +369,17 @@ export default function Trending() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function Trending() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-zinc-500 font-mono text-sm">Loading...</div>
+      </div>
+    }>
+      <TrendingInner />
+    </Suspense>
   );
 }
