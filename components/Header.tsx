@@ -40,7 +40,7 @@ export default function Header() {
   const totalFixed = fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
 
   const navLinks = [
-    { href: "/", label: "🏠 Home" },
+    { href: "/", label: "Search" },
     { href: "/leaderboard", label: "🏆 Top ROI" },
     { href: "/trending", label: "📈 Trending" },
     { href: "/watchlist", label: "★ Watchlist" },
