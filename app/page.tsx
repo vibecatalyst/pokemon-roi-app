@@ -44,7 +44,7 @@ function HomeInner() {
   const [lastQuery, setLastQuery] = useState("");
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [mounted, setMounted] = useState(false);
-  const { items: watchlist, loading: watchlistLoading } = useWatchlist();
+  const { items: watchlist, loading: watchlistLoading, addItem, removeItem, isWatched } = useWatchlist();
   const { fees } = useFees();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -150,23 +150,57 @@ function HomeInner() {
               </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {results.map((card, idx) => (
-                <button
-                  key={card.id + "-" + idx}
-                  onClick={() => router.push(cardUrl(card.tcgPlayerId))}
-                  className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-yellow-400/40 rounded-xl p-3 text-left transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
-                >
-                  {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />}
-                  <p className="text-sm font-semibold text-white truncate">{card.name}</p>
-                  <p className="text-xs text-zinc-500 truncate">{card.set}</p>
-                  {card.rawPrice > 0 && <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl">
-                    <span className="text-xs text-white font-mono bg-yellow-400/20 border border-yellow-400/30 px-2 py-1 rounded-lg">
-                      View ROI →
-                    </span>
+              {results.map((card, idx) => {
+                const watched = isWatched(card.tcgPlayerId);
+                return (
+                  <div
+                    key={card.id + "-" + idx}
+                    className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-yellow-400/40 rounded-xl p-3 transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
+                  >
+                    {/* Watchlist star */}
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (watched) {
+                          await removeItem(card.tcgPlayerId);
+                        } else {
+                          await addItem({
+                            tcgPlayerId: card.tcgPlayerId,
+                            name: card.name,
+                            set: card.set,
+                            image: card.image,
+                            rawPrice: card.rawPrice,
+                            psa10Price: card.psa10Price,
+                            psa9Price: card.psa9Price ?? 0,
+                            rarity: card.rarity,
+                            number: card.number,
+                            addedAt: new Date().toISOString(),
+                          });
+                        }
+                      }}
+                      className={"absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all z-10 " +
+                        (watched
+                          ? "bg-blue-500 text-white hover:bg-red-500"
+                          : "bg-zinc-800/80 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
+                    >
+                      {watched ? "★" : "☆"}
+                    </button>
+
+                    {/* Card content */}
+                    <div onClick={() => router.push(cardUrl(card.tcgPlayerId))} className="cursor-pointer">
+                      {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />}
+                      <p className="text-sm font-semibold text-white truncate pr-8">{card.name}</p>
+                      <p className="text-xs text-zinc-500 truncate">{card.set}</p>
+                      {card.rawPrice > 0 && <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl pointer-events-none">
+                        <span className="text-xs text-white font-mono bg-yellow-400/20 border border-yellow-400/30 px-2 py-1 rounded-lg">
+                          View ROI →
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
