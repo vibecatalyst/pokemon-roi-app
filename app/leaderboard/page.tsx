@@ -39,12 +39,7 @@ function LeaderboardInner() {
   const searchParams = useSearchParams();
 
   const [sets, setSets] = useState<{ name: string; id: string }[]>([]);
-  const [selectedSet, setSelectedSet] = useState(() => {
-    const fromUrl = searchParams.get("set");
-    if (fromUrl) return fromUrl;
-    if (typeof window !== "undefined") return localStorage.getItem("pokeroi-last-set") ?? "";
-    return "";
-  });
+  const [selectedSet, setSelectedSet] = useState(searchParams.get("set") ?? "");
   const [cards, setCards] = useState<CardData[]>([]);
   const [loading, setLoading] = useState(false);
   const [setsLoading, setSetsLoading] = useState(true);
@@ -70,6 +65,7 @@ function LeaderboardInner() {
     router.replace("/leaderboard?" + current.toString(), { scroll: false });
   }
 
+  // Load sets list on mount
   useEffect(() => {
     fetch("/api/sets")
       .then((r) => r.json())
@@ -81,13 +77,12 @@ function LeaderboardInner() {
       .catch(() => setSetsLoading(false));
   }, []);
 
+  // Only auto-fetch if coming back from a card page (set is in URL)
   useEffect(() => {
     const fromUrl = searchParams.get("set");
-    const savedSet = typeof window !== "undefined" ? localStorage.getItem("pokeroi-last-set") : null;
-    const setToLoad = fromUrl ?? savedSet;
-    if (setToLoad) {
-      setSelectedSet(setToLoad);
-      fetchSetCards(setToLoad);
+    if (fromUrl) {
+      setSelectedSet(fromUrl);
+      fetchSetCards(fromUrl);
     }
   }, []);
 
@@ -479,7 +474,8 @@ function LeaderboardInner() {
         {!loading && !selectedSet && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏆</div>
-            <p className="text-zinc-600 font-mono text-sm">Select a set to see the top ROI cards</p>
+            <p className="text-zinc-500 font-mono text-sm mb-2">Select a set above to see the top ROI cards</p>
+            <p className="text-zinc-700 text-xs">Cards are loaded on demand to conserve API credits</p>
           </div>
         )}
 
