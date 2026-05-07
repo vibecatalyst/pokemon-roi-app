@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import SearchBar from "@/components/SearchBar";
+import { CardData } from "@/lib/types";
+import { searchCards } from "@/lib/api";
 import { useWatchlist } from "@/lib/watchlist-context";
-import { WatchlistItem } from "@/lib/watchlist";
+import { getSubmissions, Submission } from "@/lib/submissions";
 import { useFees } from "@/lib/fees-context";
 import Link from "next/link";
 
@@ -12,478 +15,342 @@ function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFee
   const saleProceeds = price * (1 - fees.ebayFeePercent / 100);
   const profit = saleProceeds - totalCosts;
   const roi = totalCosts > 0 ? (profit / totalCosts) * 100 : 0;
-  const breakEven = totalCosts / (1 - fees.ebayFeePercent / 100);
-  return { profit, roi, totalCosts, saleProceeds, breakEven };
+  return { profit, roi, totalCosts, saleProceeds };
 }
 
-export default function Watchlist() {
-  const { items, loading: syncing, removeItem, reload } = useWatchlist();
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <p className="text-xs text-zinc-500 font-mono mb-1">{label}</p>
+      <p className={"text-2xl font-black font-mono " + (color ?? "text-white")}>{value}</p>
+      {sub && <p className="text-xs text-zinc-600 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  preparing: "📦 Preparing",
+  shipped: "🚚 Shipped",
+  received: "📬 Received",
+  grading: "🔍 Grading",
+  graded: "⭐ Graded",
+  returned: "✅ Returned",
+};
+
+function HomeInner() {
+  const [results, setResults] = useState<CardData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [lastQuery, setLastQuery] = useState("");
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [mounted, setMounted] = useState(false);
-  const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("added");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshProgress, setRefreshProgress] = useState(0);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const { items: watchlist } = useWatchlist();
   const { fees } = useFees();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setMounted(true);
+    setSubmissions(getSubmissions());
+
+    const q = searchParams.get("q");
+    if (q && q.trim()) {
+      setLastQuery(q);
+      setLoading(true);
+      searchCards(q.trim())
+        .then((cards) => { if (cards.length > 0) setResults(cards); })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
   }, []);
 
-  async function handleRemove(tcgPlayerId: string) {
-    await removeItem(tcgPlayerId);
-  }
-
-  async function handleRefreshAll() {
-    if (items.length === 0) return;
-    setRefreshing(true);
-    setRefreshProgress(0);
-
-    const updated = [...items];
-    for (let i = 0; i < updated.length; i++) {
-      try {
-        const res = await fetch("/api/card?id=" + updated[i].tcgPlayerId);
-        const json = await res.json();
-        const raw = json.data;
-        const cardData = Array.isArray(raw) ? raw[0] : raw;
-        if (cardData) {
-          const prices = (cardData.prices as Record<string, number>) ?? {};
-          const rawPrice = prices.market ?? prices.low ?? updated[i].rawPrice;
-          const ebay = (cardData.ebay as Record<string, unknown>) ?? {};
-          const salesByGrade = (ebay.salesByGrade as Record<string, Record<string, unknown>>) ?? {};
-          const psa10 = salesByGrade.psa10 ?? {};
-          const psa9 = salesByGrade.psa9 ?? {};
-          const smart10 = (psa10.smartMarketPrice as Record<string, number>) ?? {};
-          const smart9 = (psa9.smartMarketPrice as Record<string, number>) ?? {};
-          const psa10Price = smart10.price ?? (psa10.marketPrice7Day as number) ?? updated[i].psa10Price;
-          const psa9Price = smart9.price ?? (psa9.marketPrice7Day as number) ?? updated[i].psa9Price;
-          updated[i] = { ...updated[i], rawPrice, psa10Price, psa9Price };
-        }
-      } catch {
-        // keep existing price
-      }
-      setRefreshProgress(i + 1);
-      await new Promise((r) => setTimeout(r, 300));
-    }
-
-    for (const item of updated) {
-      await fetch("/api/db/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
-      });
-    }
-
-    await reload();
-    setRefreshing(false);
-    setRefreshProgress(0);
-    setLastRefreshed(new Date());
-  }
-
-  function toggleSort(key: typeof sortBy) {
-    if (sortBy === key) setSortDir(sortDir === "desc" ? "asc" : "desc");
-    else { setSortBy(key); setSortDir("desc"); }
-  }
-
   function cardUrl(tcgPlayerId: string) {
-    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/watchlist");
+    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/?q=" + encodeURIComponent(lastQuery));
   }
 
-  const sorted = useMemo(() => {
-    return [...items].sort((a, b) => {
-      const roiA = calcROI(a.psa10Price, a.rawPrice, fees).roi;
-      const roiB = calcROI(b.psa10Price, b.rawPrice, fees).roi;
-      const profitA = calcROI(a.psa10Price, a.rawPrice, fees).profit;
-      const profitB = calcROI(b.psa10Price, b.rawPrice, fees).profit;
-      let diff = 0;
-      if (sortBy === "roi") diff = roiB - roiA;
-      else if (sortBy === "raw") diff = b.rawPrice - a.rawPrice;
-      else if (sortBy === "psa10") diff = b.psa10Price - a.psa10Price;
-      else if (sortBy === "profit") diff = profitB - profitA;
-      else diff = new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
-      return sortDir === "desc" ? diff : -diff;
-    });
-  }, [items, sortBy, sortDir, fees]);
+  const watchlistStats = mounted ? (() => {
+    const profitable = watchlist.filter(i => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
+    const totalProfit = watchlist.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
+    const avgRoi = watchlist.length > 0 ? watchlist.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).roi, 0) / watchlist.length : 0;
+    const topCard = [...watchlist].sort((a, b) => calcROI(b.psa10Price, b.rawPrice, fees).roi - calcROI(a.psa10Price, a.rawPrice, fees).roi)[0];
+    return { profitable, totalProfit, avgRoi, topCard };
+  })() : null;
 
-  function exportToCSV() {
-    const headers = ["Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "PSA 9 Price", "Total Cost", "PSA 10 Profit", "PSA 10 ROI %", "PSA 9 Profit", "PSA 9 ROI %", "Added"];
-    const rows = sorted.map((item) => {
-      const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
-      const r9 = calcROI(item.psa9Price, item.rawPrice, fees);
-      return [
-        item.name, item.set, item.rarity, item.number,
-        item.rawPrice.toFixed(2), item.psa10Price.toFixed(2), item.psa9Price.toFixed(2),
-        r10.totalCosts.toFixed(2), r10.profit.toFixed(2), r10.roi.toFixed(1) + "%",
-        r9.profit.toFixed(2), r9.roi.toFixed(1) + "%",
-        new Date(item.addedAt).toLocaleDateString(),
-      ];
-    });
-    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "watchlist.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const submissionStats = mounted ? (() => {
+    const active = submissions.filter(s => s.status !== "returned");
+    const returned = submissions.filter(s => s.status === "returned" && s.soldPrice);
+    const totalInvested = active.reduce((s, i) => s + i.rawPrice + i.gradingFee + i.shippingCost, 0);
+    const realizedProfit = returned.reduce((s, i) => {
+      const proceeds = (i.soldPrice ?? 0) * (1 - fees.ebayFeePercent / 100);
+      const cost = i.rawPrice + i.gradingFee + i.shippingCost;
+      return s + proceeds - cost;
+    }, 0);
+    return { active, totalInvested, realizedProfit };
+  })() : null;
 
-  function SortHeader({ label, field }: { label: string; field: typeof sortBy }) {
-    const active = sortBy === field;
-    return (
-      <th
-        onClick={() => toggleSort(field)}
-        className={"text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none " + (active ? "text-yellow-400" : "text-zinc-500 hover:text-white")}
-      >
-        {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
-      </th>
-    );
-  }
+  const topOpportunities = mounted
+    ? [...watchlist]
+        .filter(i => i.psa10Price > 0)
+        .map(i => ({ ...i, ...calcROI(i.psa10Price, i.rawPrice, fees) }))
+        .sort((a, b) => b.roi - a.roi)
+        .slice(0, 5)
+    : [];
 
-  if (!mounted) return null;
+  const showDashboard = results.length === 0 && !loading && mounted;
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/3 w-96 h-96 bg-blue-400/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-yellow-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-yellow-400/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl" />
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
+      <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
 
-        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-          <div>
-            <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
-            <h1 className="text-4xl font-black mt-2">
-              <span className="text-white">MY </span>
-              <span className="text-blue-400">WATCHLIST</span>
-            </h1>
-            <div className="flex items-center gap-2 mt-1">
-              <p className="text-zinc-500 text-sm">Cards you are tracking for grading opportunities</p>
-              <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
-                ☁ Synced
-              </span>
-            </div>
-          </div>
-
-          {items.length > 0 && (
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-zinc-500 font-mono">SORT</label>
-                <select
-                  value={sortBy}
-                  onChange={(e) => { setSortBy(e.target.value as typeof sortBy); setSortDir("desc"); }}
-                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm outline-none font-mono"
-                >
-                  <option value="added">Date Added</option>
-                  <option value="roi">ROI %</option>
-                  <option value="profit">Net Profit</option>
-                  <option value="raw">Raw Price</option>
-                  <option value="psa10">PSA 10 Price</option>
-                </select>
-                <button
-                  onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
-                  className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2 text-white text-sm transition-colors font-mono"
-                >
-                  {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
-                </button>
-              </div>
-
-              <button
-                onClick={handleRefreshAll}
-                disabled={refreshing}
-                className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-600 border border-zinc-700 text-zinc-300 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
-              >
-                {refreshing ? (
-                  <><span className="animate-spin inline-block">⟳</span> {refreshProgress}/{items.length}</>
-                ) : (
-                  <>⟳ Refresh Prices</>
-                )}
-              </button>
-
-              <button
-                onClick={exportToCSV}
-                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2 rounded-lg transition-colors text-sm"
-              >
-                Export CSV
-              </button>
-            </div>
-          )}
+        {/* Hero */}
+        <div className="text-center mb-10">
+          <h1 className="text-5xl md:text-7xl font-black mb-3 tracking-tight" style={{ letterSpacing: "0.02em" }}>
+            <span className="text-white">POKE</span>
+            <span className="text-yellow-400">ROI</span>
+          </h1>
+          <p className="text-zinc-400 text-lg max-w-md mx-auto">
+            Your Pokémon card grading command center
+          </p>
         </div>
 
-        {syncing && (
-          <div className="text-center py-8">
-            <div className="text-2xl mb-2 animate-spin inline-block">⟳</div>
-            <p className="text-zinc-500 font-mono text-sm">Loading from cloud...</p>
+        {/* Search */}
+        <SearchBar
+          onResults={(cards) => setResults(cards)}
+          onSelect={() => {}}
+          onQueryChange={(q) => {
+            setLastQuery(q);
+            router.replace("/?q=" + encodeURIComponent(q), { scroll: false });
+          }}
+          setLoading={setLoading}
+          setError={setError}
+          loading={loading}
+        />
+
+        {error && (
+          <div className="mt-4 text-center text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+            {error}
           </div>
         )}
 
-        {lastRefreshed && (
-          <p className="text-xs text-zinc-600 font-mono mb-4">
-            Prices last refreshed at {lastRefreshed.toLocaleTimeString()}
-          </p>
-        )}
-
-        {/* Stats */}
-        {items.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            {(() => {
-              const profitable = items.filter((i) => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
-              const totalProfit = items.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
-              const avgRoi = items.length > 0 ? items.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).roi, 0) / items.length : 0;
-              return (
-                <>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-black text-white font-mono">{items.length}</p>
-                    <p className="text-xs text-zinc-600 mt-1">Cards watching</p>
-                  </div>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-black text-emerald-400 font-mono">{profitable.length}</p>
-                    <p className="text-xs text-zinc-600 mt-1">Profitable to grade</p>
-                  </div>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className={"text-2xl font-black font-mono " + (totalProfit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                      {totalProfit >= 0 ? "+" : ""}${totalProfit.toFixed(0)}
-                    </p>
-                    <p className="text-xs text-zinc-600 mt-1">Total potential profit</p>
-                  </div>
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className={"text-2xl font-black font-mono " + (avgRoi >= 0 ? "text-yellow-400" : "text-red-400")}>
-                      {avgRoi >= 0 ? "+" : ""}{avgRoi.toFixed(0)}%
-                    </p>
-                    <p className="text-xs text-zinc-600 mt-1">Average ROI</p>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!syncing && items.length === 0 && (
-          <div className="text-center py-20">
-            <div className="text-5xl mb-4">👀</div>
-            <p className="text-zinc-500 font-mono text-sm mb-2">Your watchlist is empty</p>
-            <p className="text-zinc-700 text-xs mb-6">Search for cards and click the star icon to add them here</p>
-            <Link href="/" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
-              Search Cards
-            </Link>
-          </div>
-        )}
-
-        {/* Table */}
-        {sorted.length > 0 && (
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-zinc-800">
-                    <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8"></th>
-                    <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
-                    <SortHeader label="RAW" field="raw" />
-                    <SortHeader label="PSA 10" field="psa10" />
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PSA 9</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">TOTAL COST</th>
-                    <SortHeader label="P10 PROFIT" field="profit" />
-                    <SortHeader label="P10 ROI" field="roi" />
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">P9 PROFIT</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">P9 ROI</th>
-                    <SortHeader label="ADDED" field="added" />
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((item: WatchlistItem) => {
-                    const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
-                    const r9 = calcROI(item.psa9Price, item.rawPrice, fees);
-                    const hasPsa9 = item.psa9Price > 0;
-                    const roi10Color = r10.roi > 50 ? "text-emerald-400" : r10.roi > 0 ? "text-yellow-400" : "text-red-400";
-                    const roi9Color = r9.roi > 50 ? "text-emerald-400" : r9.roi > 0 ? "text-yellow-400" : "text-red-400";
-                    const isExpanded = expandedId === item.tcgPlayerId;
-
-                    return (
-                      <>
-                        <tr key={item.tcgPlayerId} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => setExpandedId(isExpanded ? null : item.tcgPlayerId)}
-                              className="text-zinc-600 hover:text-white transition-colors text-sm font-mono w-5"
-                            >
-                              {isExpanded ? "▼" : "▶"}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 cursor-pointer" onClick={() => router.push(cardUrl(item.tcgPlayerId))}>
-                            <div className="flex items-center gap-3">
-                              {item.image && <img src={item.image} alt={item.name} className="w-10 rounded" />}
-                              <div>
-                                <p className="text-sm font-semibold text-white">{item.name}</p>
-                                <p className="text-xs text-zinc-600">{item.set} · {item.rarity} · #{item.number}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">
-                            {item.rawPrice > 0 ? "$" + item.rawPrice.toFixed(2) : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">
-                            {item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
-                            {hasPsa9 ? "$" + item.psa9Price.toFixed(2) : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">
-                            ${r10.totalCosts.toFixed(2)}
-                          </td>
-                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                            {item.psa10Price > 0 ? (r10.profit >= 0 ? "+" : "") + "$" + r10.profit.toFixed(2) : "N/A"}
-                          </td>
-                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                            {item.psa10Price > 0 ? (r10.roi >= 0 ? "+" : "") + r10.roi.toFixed(0) + "%" : "N/A"}
-                          </td>
-                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>
-                            {hasPsa9 ? (r9.profit >= 0 ? "+" : "") + "$" + r9.profit.toFixed(2) : "N/A"}
-                          </td>
-                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>
-                            {hasPsa9 ? (r9.roi >= 0 ? "+" : "") + r9.roi.toFixed(0) + "%" : "N/A"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-xs font-mono text-zinc-600">
-                            {new Date(item.addedAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }}
-                              className="text-zinc-600 hover:text-red-400 transition-colors text-lg"
-                            >
-                              ×
-                            </button>
-                          </td>
-                        </tr>
-
-                        {isExpanded && (
-                          <tr key={item.tcgPlayerId + "-expanded"} className="border-b border-zinc-800">
-                            <td colSpan={12} className="px-4 py-4 bg-zinc-900/40">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {item.psa10Price > 0 && (
-                                  <div className="bg-yellow-400/5 border border-yellow-400/10 rounded-xl p-4 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <p className="text-sm font-black text-yellow-400">PSA 10 — Gem Mint</p>
-                                      <p className="text-lg font-black text-yellow-400 font-mono">${item.psa10Price.toFixed(2)}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Total cost</p>
-                                        <p className="text-white font-bold">${r10.totalCosts.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Proceeds</p>
-                                        <p className="text-white font-bold">${r10.saleProceeds.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Profit</p>
-                                        <p className={"font-bold " + (r10.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                          {r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)}
-                                        </p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">ROI</p>
-                                        <p className={"font-bold " + (r10.roi >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                          {r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <p className="text-xs font-mono text-zinc-500">Break-even: ${r10.breakEven.toFixed(2)}</p>
-                                  </div>
-                                )}
-
-                                {hasPsa9 && (
-                                  <div className="bg-blue-400/5 border border-blue-400/10 rounded-xl p-4 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <p className="text-sm font-black text-blue-400">PSA 9 — Mint</p>
-                                      <p className="text-lg font-black text-blue-400 font-mono">${item.psa9Price.toFixed(2)}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Total cost</p>
-                                        <p className="text-white font-bold">${r9.totalCosts.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Proceeds</p>
-                                        <p className="text-white font-bold">${r9.saleProceeds.toFixed(2)}</p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">Profit</p>
-                                        <p className={"font-bold " + (r9.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                          {r9.profit >= 0 ? "+" : ""}${r9.profit.toFixed(2)}
-                                        </p>
-                                      </div>
-                                      <div className="bg-zinc-800/40 rounded-lg p-2">
-                                        <p className="text-zinc-600">ROI</p>
-                                        <p className={"font-bold " + (r9.roi >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                          {r9.roi >= 0 ? "+" : ""}{r9.roi.toFixed(0)}%
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <p className="text-xs font-mono text-zinc-500">Break-even: ${r9.breakEven.toFixed(2)}</p>
-                                  </div>
-                                )}
-                              </div>
-
-                              {item.psa10Price > 0 && hasPsa9 && (
-                                <div className="mt-3 bg-zinc-800/40 border border-zinc-700 rounded-xl p-3">
-                                  <p className="text-xs font-mono text-zinc-500 mb-1">Verdict</p>
-                                  {(() => {
-                                    const diff = r10.profit - r9.profit;
-                                    const bothProfitable = r10.profit > 0 && r9.profit > 0;
-                                    const neitherProfitable = r10.profit <= 0 && r9.profit <= 0;
-                                    return (
-                                      <p className="text-sm font-bold text-white">
-                                        {neitherProfitable
-                                          ? "❌ Neither grade is profitable at current prices"
-                                          : !bothProfitable && r10.profit > 0
-                                          ? "⚠️ Only profitable if you hit PSA 10 — PSA 9 is a loss"
-                                          : !bothProfitable && r9.profit > 0
-                                          ? "✅ Even a PSA 9 is profitable on this card"
-                                          : diff > 20
-                                          ? "✅ PSA 10 worth chasing — $" + diff.toFixed(2) + " more than a 9"
-                                          : "🟡 PSA 9 nearly as good — only $" + diff.toFixed(2) + " less than a 10"}
-                                      </p>
-                                    );
-                                  })()}
-                                </div>
-                              )}
-
-                              <button
-                                onClick={() => router.push(cardUrl(item.tcgPlayerId))}
-                                className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors font-mono"
-                              >
-                                View full detail & price history →
-                              </button>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
-              <span className="text-xs text-zinc-600 font-mono">
-                {sorted.length} cards · click ▶ to expand · click name to view details
-                {lastRefreshed && " · refreshed " + lastRefreshed.toLocaleTimeString()}
-              </span>
+        {/* Search results */}
+        {results.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-zinc-500 text-sm font-mono">{results.length} cards found — click to view ROI</p>
               <button
-                onClick={exportToCSV}
-                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
+                onClick={() => { setResults([]); router.replace("/", { scroll: false }); }}
+                className="text-xs text-zinc-600 hover:text-zinc-400 font-mono transition-colors"
               >
-                Export CSV
+                Clear ✕
               </button>
             </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {results.map((card, idx) => (
+                <button
+                  key={card.id + "-" + idx}
+                  onClick={() => router.push(cardUrl(card.tcgPlayerId))}
+                  className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-yellow-400/40 rounded-xl p-3 text-left transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
+                >
+                  {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />}
+                  <p className="text-sm font-semibold text-white truncate">{card.name}</p>
+                  <p className="text-xs text-zinc-500 truncate">{card.set}</p>
+                  {card.rawPrice > 0 && <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl">
+                    <span className="text-xs text-white font-mono bg-yellow-400/20 border border-yellow-400/30 px-2 py-1 rounded-lg">
+                      View ROI →
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dashboard */}
+        {showDashboard && (
+          <div className="mt-10 space-y-8">
+
+            {/* Quick nav */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { href: "/leaderboard", icon: "🏆", label: "Top ROI", sub: "Best cards to grade by set" },
+                { href: "/trending", icon: "📈", label: "Trending", sub: "Rising PSA 10 prices" },
+                { href: "/watchlist", icon: "★", label: "Watchlist", sub: watchlist.length + " cards saved" },
+                { href: "/submissions", icon: "📦", label: "Submissions", sub: (submissionStats?.active.length ?? 0) + " in progress" },
+              ].map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors group"
+                >
+                  <div className="text-2xl mb-2">{item.icon}</div>
+                  <p className="text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">{item.label}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">{item.sub}</p>
+                </Link>
+              ))}
+            </div>
+
+            {/* Watchlist summary */}
+            {watchlist.length > 0 && watchlistStats && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-black text-white">Watchlist Summary</h2>
+                  <Link href="/watchlist" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                    View all {watchlist.length} cards →
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <StatCard label="Cards watching" value={String(watchlist.length)} />
+                  <StatCard
+                    label="Profitable to grade"
+                    value={String(watchlistStats.profitable.length)}
+                    sub={((watchlistStats.profitable.length / watchlist.length) * 100).toFixed(0) + "% of watchlist"}
+                    color="text-emerald-400"
+                  />
+                  <StatCard
+                    label="Total potential profit"
+                    value={(watchlistStats.totalProfit >= 0 ? "+" : "") + "$" + watchlistStats.totalProfit.toFixed(0)}
+                    color={watchlistStats.totalProfit >= 0 ? "text-emerald-400" : "text-red-400"}
+                  />
+                  <StatCard
+                    label="Average ROI"
+                    value={(watchlistStats.avgRoi >= 0 ? "+" : "") + watchlistStats.avgRoi.toFixed(0) + "%"}
+                    color={watchlistStats.avgRoi >= 0 ? "text-yellow-400" : "text-red-400"}
+                  />
+                </div>
+
+                {topOpportunities.length > 0 && (
+                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800">
+                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Top Opportunities in Watchlist</p>
+                    </div>
+                    <div className="divide-y divide-zinc-800/50">
+                      {topOpportunities.map((card, idx) => {
+                        const roiColor = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
+                        return (
+                          <div
+                            key={card.tcgPlayerId}
+                            onClick={() => router.push("/card/" + card.tcgPlayerId + "?from=" + encodeURIComponent("/watchlist"))}
+                            className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                          >
+                            <span className="text-zinc-600 font-mono text-sm w-4">{idx + 1}</span>
+                            {card.image && <img src={card.image} alt={card.name} className="w-8 rounded flex-shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">{card.name}</p>
+                              <p className="text-xs text-zinc-600 truncate">{card.set}</p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className={"text-sm font-black font-mono " + roiColor}>
+                                {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
+                              </p>
+                              <p className={"text-xs font-mono " + roiColor}>
+                                {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Submissions summary */}
+            {submissions.length > 0 && submissionStats && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-black text-white">Submissions</h2>
+                  <Link href="/submissions" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                    View all →
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <StatCard label="Total submitted" value={String(submissions.length)} />
+                  <StatCard label="In progress" value={String(submissionStats.active.length)} color="text-orange-400" />
+                  <StatCard label="Capital at risk" value={"$" + submissionStats.totalInvested.toFixed(0)} color="text-yellow-400" />
+                  <StatCard
+                    label="Realized profit"
+                    value={(submissionStats.realizedProfit >= 0 ? "+" : "") + "$" + submissionStats.realizedProfit.toFixed(0)}
+                    color={submissionStats.realizedProfit >= 0 ? "text-emerald-400" : "text-red-400"}
+                  />
+                </div>
+
+                {submissionStats.active.length > 0 && (
+                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800">
+                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Active Submissions</p>
+                    </div>
+                    <div className="divide-y divide-zinc-800/50">
+                      {submissionStats.active.slice(0, 5).map((sub) => (
+                        <div
+                          key={sub.id}
+                          onClick={() => router.push("/submissions")}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                        >
+                          {sub.image && <img src={sub.image} alt={sub.name} className="w-8 rounded flex-shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{sub.name}</p>
+                            <p className="text-xs text-zinc-600 truncate">{sub.set}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-mono text-zinc-400">{STATUS_LABELS[sub.status]}</p>
+                            <p className="text-xs font-mono text-zinc-600">${(sub.rawPrice + sub.gradingFee + sub.shippingCost).toFixed(2)} invested</p>
+                          </div>
+                        </div>
+                      ))}
+                      {submissionStats.active.length > 5 && (
+                        <div className="px-4 py-3 text-center">
+                          <Link href="/submissions" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                            +{submissionStats.active.length - 5} more →
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {watchlist.length === 0 && submissions.length === 0 && (
+              <div className="text-center py-10">
+                <div className="text-5xl mb-4">⚡</div>
+                <p className="text-zinc-500 font-mono text-sm mb-2">Welcome to PokeROI</p>
+                <p className="text-zinc-700 text-xs mb-6 max-w-sm mx-auto">
+                  Search for a card above to get started, or browse the Top ROI leaderboard to find grading opportunities
+                </p>
+                <div className="flex gap-3 justify-center flex-wrap">
+                  <Link href="/leaderboard" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
+                    🏆 Browse Top ROI
+                  </Link>
+                  <Link href="/trending" className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
+                    📈 See Trending Cards
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-zinc-500 font-mono text-sm">Loading...</div>
+      </div>
+    }>
+      <HomeInner />
+    </Suspense>
   );
 }
