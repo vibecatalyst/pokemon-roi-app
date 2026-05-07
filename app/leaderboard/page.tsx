@@ -499,81 +499,83 @@ function LeaderboardInner() {
         {filtered.length > 0 && (
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="sticky top-14 z-10 bg-[#0d0d14]">
-                  <tr className="border-b border-zinc-800">
-                    <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8">#</th>
-                    <th className="text-left text-xs text-zinc-500 font-mono px-2 py-3 w-8"></th>
-                    <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
-                    <SortTh label="RAW" field="raw" />
-                    <SortTh label="PSA 10" field="psa10" />
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PSA 9</th>
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">COST</th>
-                    <SortTh label="P10 PROFIT" field="profit" />
-                    <SortTh label="P10 ROI" field="roi" />
-                    <SortTh label="P9 PROFIT" field="profit9" />
-                    <SortTh label="P9 ROI" field="roi9" />
-                    <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">MULT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleCards.map((card, idx) => {
-                    const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
-                    const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
-                    const isWatched = watchedIds.has(card.tcgPlayerId);
-                    return (
-                      <tr
-                        key={card.id}
-                        onClick={() => router.push(cardUrl(card.tcgPlayerId))}
-                        className={"border-b border-zinc-800/50 transition-colors cursor-pointer " + (idx % 2 === 0 ? "bg-transparent hover:bg-zinc-800/50" : "bg-zinc-800/20 hover:bg-zinc-800/50")}
-                      >
-                        <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
-                        <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
-                          <button
-                            className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
-                              (isWatched
-                                ? "bg-blue-500 text-white hover:bg-red-500"
-                                : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
-                            title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
-                          >
-                            {isWatched ? "★" : "☆"}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            {card.image && <img src={card.image} alt={card.name} className="w-10 rounded" />}
-                            <div>
-                              <p className="text-sm font-semibold text-white">{card.name}</p>
-                              <p className="text-xs text-zinc-600">{card.rarity} · #{card.number}</p>
+              <div className="max-h-[72vh] overflow-y-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0 z-10 bg-[#0d0d14] border-b border-zinc-800">
+                    <tr>
+                      <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8">#</th>
+                      <th className="text-left text-xs text-zinc-500 font-mono px-2 py-3 w-8"></th>
+                      <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
+                      <SortTh label="RAW" field="raw" />
+                      <SortTh label="PSA 10" field="psa10" />
+                      <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PSA 9</th>
+                      <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">COST</th>
+                      <SortTh label="P10 PROFIT" field="profit" />
+                      <SortTh label="P10 ROI" field="roi" />
+                      <SortTh label="P9 PROFIT" field="profit9" />
+                      <SortTh label="P9 ROI" field="roi9" />
+                      <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">MULT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleCards.map((card, idx) => {
+                      const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
+                      const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
+                      const isWatched = watchedIds.has(card.tcgPlayerId);
+                      return (
+                        <tr
+                          key={card.id}
+                          onClick={() => router.push(cardUrl(card.tcgPlayerId))}
+                          className={"border-b border-zinc-800/50 transition-colors cursor-pointer " + (idx % 2 === 0 ? "bg-transparent hover:bg-zinc-800/50" : "bg-zinc-800/20 hover:bg-zinc-800/50")}
+                        >
+                          <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
+                          <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
+                            <button
+                              className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
+                                (isWatched
+                                  ? "bg-blue-500 text-white hover:bg-red-500"
+                                  : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
+                              title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
+                            >
+                              {isWatched ? "★" : "☆"}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              {card.image && <img src={card.image} alt={card.name} className="w-10 rounded" />}
+                              <div>
+                                <p className="text-sm font-semibold text-white">{card.name}</p>
+                                <p className="text-xs text-zinc-600">{card.rarity} · #{card.number}</p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">${card.rawPrice.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">${card.psa10Price.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
-                          {card.psa9Price > 0 ? "$" + card.psa9Price.toFixed(2) : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.totalCosts.toFixed(2)}</td>
-                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                          {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
-                        </td>
-                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                          {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
-                        </td>
-                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
-                          {card.psa9Price > 0 ? (card.profit9 >= 0 ? "+" : "") + "$" + card.profit9.toFixed(2) : "—"}
-                        </td>
-                        <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
-                          {card.psa9Price > 0 ? (card.roi9 >= 0 ? "+" : "") + card.roi9.toFixed(0) + "%" : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">
-                          {(card.psa10Price / card.rawPrice).toFixed(1)}x
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">${card.rawPrice.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">${card.psa10Price.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
+                            {card.psa9Price > 0 ? "$" + card.psa9Price.toFixed(2) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.totalCosts.toFixed(2)}</td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
+                            {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
+                          </td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
+                            {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
+                          </td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
+                            {card.psa9Price > 0 ? (card.profit9 >= 0 ? "+" : "") + "$" + card.profit9.toFixed(2) : "—"}
+                          </td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
+                            {card.psa9Price > 0 ? (card.roi9 >= 0 ? "+" : "") + card.roi9.toFixed(0) + "%" : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">
+                            {(card.psa10Price / card.rawPrice).toFixed(1)}x
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between gap-4 flex-wrap">
