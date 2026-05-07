@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { FeesProvider } from "@/lib/fees-context";
+import { WatchlistProvider } from "@/lib/watchlist-context";
 import Header from "@/components/Header";
 
 const geistSans = Geist({
@@ -30,8 +31,10 @@ export default function RootLayout({
       <html lang="en">
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
           <FeesProvider>
-            <Header />
-            {children}
+            <WatchlistProvider>
+              <Header />
+              {children}
+            </WatchlistProvider>
           </FeesProvider>
         </body>
       </html>

@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
-import { addToWatchlist, removeFromWatchlist, isInWatchlist } from "@/lib/watchlist";
+import { useWatchlist } from "@/lib/watchlist-context";
 import { addSubmission } from "@/lib/submissions";
 import PriceChart from "@/components/PriceChart";
 import CardResult from "@/components/CardResult";
@@ -143,18 +143,18 @@ function CardDetailInner() {
   const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
   const fromUrl = searchParams.get("from") ?? "/";
   const { fees } = useFees();
+  const { addItem, removeItem, isWatched } = useWatchlist();
+  const watched = isWatched(id);
 
   const [card, setCard] = useState<MappedCard | null>(null);
   const [priceHistory, setPriceHistory] = useState<PriceHistory>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [watched, setWatched] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    setWatched(isInWatchlist(id));
     fetch("/api/card?id=" + id)
       .then((r) => r.json())
       .then((json) => {
@@ -170,13 +170,12 @@ function CardDetailInner() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  function toggleWatchlist() {
+  async function toggleWatchlist() {
     if (!card) return;
     if (watched) {
-      removeFromWatchlist(card.tcgPlayerId);
-      setWatched(false);
+      await removeItem(card.tcgPlayerId);
     } else {
-      addToWatchlist({
+      await addItem({
         tcgPlayerId: card.tcgPlayerId,
         name: card.name,
         set: card.set,
@@ -188,7 +187,6 @@ function CardDetailInner() {
         number: card.number,
         addedAt: new Date().toISOString(),
       });
-      setWatched(true);
     }
   }
 

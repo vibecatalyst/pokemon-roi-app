@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
-import { getWatchlist, removeFromWatchlist, WatchlistItem } from "@/lib/watchlist";
-import { dbGetWatchlist, dbRemoveFromWatchlist } from "@/lib/db";
+import { useWatchlist } from "@/lib/watchlist-context";
+import { WatchlistItem } from "@/lib/watchlist";
 import { useFees } from "@/lib/fees-context";
 import Link from "next/link";
 
@@ -17,25 +16,9 @@ function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFee
   return { profit, roi, totalCosts, saleProceeds, breakEven };
 }
 
-function mapDbItem(row: Record<string, unknown>): WatchlistItem {
-  return {
-    tcgPlayerId: String(row.tcg_player_id ?? ""),
-    name: String(row.name ?? ""),
-    set: String(row.set_name ?? ""),
-    image: row.image ? String(row.image) : undefined,
-    rawPrice: Number(row.raw_price ?? 0),
-    psa10Price: Number(row.psa10_price ?? 0),
-    psa9Price: Number(row.psa9_price ?? 0),
-    rarity: String(row.rarity ?? ""),
-    number: String(row.number ?? ""),
-    addedAt: String(row.added_at ?? new Date().toISOString()),
-  };
-}
-
 export default function Watchlist() {
-  const [items, setItems] = useState<WatchlistItem[]>([]);
+  const { items, loading: syncing, removeItem, reload } = useWatchlist();
   const [mounted, setMounted] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("added");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -43,40 +26,14 @@ export default function Watchlist() {
   const [refreshProgress, setRefreshProgress] = useState(0);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const { fees } = useFees();
-  const { isSignedIn } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
-    loadItems();
-  }, [isSignedIn]);
-
-  async function loadItems() {
-    if (isSignedIn) {
-      setSyncing(true);
-      try {
-        const data = await dbGetWatchlist();
-        if (data) {
-          setItems(data.map(mapDbItem));
-          return;
-        }
-      } catch {
-        // fall back to localStorage
-      } finally {
-        setSyncing(false);
-      }
-    }
-    setItems(getWatchlist());
-  }
+  }, []);
 
   async function handleRemove(tcgPlayerId: string) {
-    if (isSignedIn) {
-      await dbRemoveFromWatchlist(tcgPlayerId);
-      await loadItems();
-    } else {
-      removeFromWatchlist(tcgPlayerId);
-      setItems(getWatchlist());
-    }
+    await removeItem(tcgPlayerId);
   }
 
   async function handleRefreshAll() {
@@ -111,19 +68,15 @@ export default function Watchlist() {
       await new Promise((r) => setTimeout(r, 300));
     }
 
-    if (isSignedIn) {
-      for (const item of updated) {
-        await fetch("/api/db/watchlist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(item),
-        });
-      }
-    } else {
-      localStorage.setItem("pokeroi-watchlist", JSON.stringify(updated));
+    for (const item of updated) {
+      await fetch("/api/db/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
     }
 
-    setItems(updated);
+    await reload();
     setRefreshing(false);
     setRefreshProgress(0);
     setLastRefreshed(new Date());
@@ -210,16 +163,9 @@ export default function Watchlist() {
             </h1>
             <div className="flex items-center gap-2 mt-1">
               <p className="text-zinc-500 text-sm">Cards you are tracking for grading opportunities</p>
-              {isSignedIn && (
-                <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
-                  ☁ Synced
-                </span>
-              )}
-              {!isSignedIn && (
-                <span className="text-xs bg-zinc-800 border border-zinc-700 text-zinc-500 px-2 py-0.5 rounded-full font-mono">
-                  💾 Local only
-                </span>
-              )}
+              <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
+                ☁ Synced
+              </span>
             </div>
           </div>
 
@@ -350,7 +296,7 @@ export default function Watchlist() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((item) => {
+                  {sorted.map((item: WatchlistItem) => {
                     const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
                     const r9 = calcROI(item.psa9Price, item.rawPrice, fees);
                     const hasPsa9 = item.psa9Price > 0;
