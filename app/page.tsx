@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SearchBar from "@/components/SearchBar";
 import { CardData } from "@/lib/types";
 import { searchCards } from "@/lib/api";
-import { getWatchlist, WatchlistItem } from "@/lib/watchlist";
+import { useWatchlist } from "@/lib/watchlist-context";
 import { getSubmissions, Submission } from "@/lib/submissions";
 import { useFees } from "@/lib/fees-context";
 import Link from "next/link";
@@ -42,16 +42,15 @@ function HomeInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [lastQuery, setLastQuery] = useState("");
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [mounted, setMounted] = useState(false);
+  const { items: watchlist, loading: watchlistLoading } = useWatchlist();
   const { fees } = useFees();
   const router = useRouter();
   const searchParams = useSearchParams();
 
   useEffect(() => {
     setMounted(true);
-    setWatchlist(getWatchlist());
     setSubmissions(getSubmissions());
 
     const q = searchParams.get("q");
@@ -69,12 +68,11 @@ function HomeInner() {
     return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/?q=" + encodeURIComponent(lastQuery));
   }
 
-  const watchlistStats = mounted ? (() => {
+  const watchlistStats = mounted && !watchlistLoading ? (() => {
     const profitable = watchlist.filter(i => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
     const totalProfit = watchlist.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
     const avgRoi = watchlist.length > 0 ? watchlist.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).roi, 0) / watchlist.length : 0;
-    const topCard = [...watchlist].sort((a, b) => calcROI(b.psa10Price, b.rawPrice, fees).roi - calcROI(a.psa10Price, a.rawPrice, fees).roi)[0];
-    return { profitable, totalProfit, avgRoi, topCard };
+    return { profitable, totalProfit, avgRoi };
   })() : null;
 
   const submissionStats = mounted ? (() => {
@@ -89,7 +87,7 @@ function HomeInner() {
     return { active, totalInvested, realizedProfit };
   })() : null;
 
-  const topOpportunities = mounted
+  const topOpportunities = mounted && !watchlistLoading
     ? [...watchlist]
         .filter(i => i.psa10Price > 0)
         .map(i => ({ ...i, ...calcROI(i.psa10Price, i.rawPrice, fees) }))
@@ -182,7 +180,7 @@ function HomeInner() {
               {[
                 { href: "/leaderboard", icon: "🏆", label: "Top ROI", sub: "Best cards to grade by set" },
                 { href: "/trending", icon: "📈", label: "Trending", sub: "Rising PSA 10 prices" },
-                { href: "/watchlist", icon: "★", label: "Watchlist", sub: watchlist.length + " cards saved" },
+                { href: "/watchlist", icon: "★", label: "Watchlist", sub: watchlistLoading ? "Loading..." : watchlist.length + " cards saved" },
                 { href: "/submissions", icon: "📦", label: "Submissions", sub: (submissionStats?.active.length ?? 0) + " in progress" },
               ].map((item) => (
                 <Link
@@ -197,8 +195,16 @@ function HomeInner() {
               ))}
             </div>
 
+            {/* Watchlist loading state */}
+            {watchlistLoading && (
+              <div className="text-center py-8">
+                <div className="text-2xl mb-2 animate-spin inline-block">⟳</div>
+                <p className="text-zinc-500 font-mono text-sm">Loading your watchlist...</p>
+              </div>
+            )}
+
             {/* Watchlist summary */}
-            {watchlist.length > 0 && watchlistStats && (
+            {!watchlistLoading && watchlist.length > 0 && watchlistStats && (
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-lg font-black text-white">Watchlist Summary</h2>
@@ -320,7 +326,7 @@ function HomeInner() {
             )}
 
             {/* Empty state */}
-            {watchlist.length === 0 && submissions.length === 0 && (
+            {!watchlistLoading && watchlist.length === 0 && submissions.length === 0 && (
               <div className="text-center py-10">
                 <div className="text-5xl mb-4">⚡</div>
                 <p className="text-zinc-500 font-mono text-sm mb-2">Welcome to PokeROI</p>
