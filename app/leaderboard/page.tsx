@@ -500,7 +500,7 @@ function LeaderboardInner() {
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
+                <thead className="sticky top-14 z-10 bg-[#0d0d14]">
                   <tr className="border-b border-zinc-800">
                     <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8">#</th>
                     <th className="text-left text-xs text-zinc-500 font-mono px-2 py-3 w-8"></th>
@@ -525,7 +525,7 @@ function LeaderboardInner() {
                       <tr
                         key={card.id}
                         onClick={() => router.push(cardUrl(card.tcgPlayerId))}
-                        className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                        className={"border-b border-zinc-800/50 transition-colors cursor-pointer " + (idx % 2 === 0 ? "bg-transparent hover:bg-zinc-800/50" : "bg-zinc-800/20 hover:bg-zinc-800/50")}
                       >
                         <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
                         <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
