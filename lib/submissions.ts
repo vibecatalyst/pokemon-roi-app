@@ -5,7 +5,7 @@ export interface Submission {
   tcgPlayerId: string;
   name: string;
   set: string;
-  image: string;
+  image?: string;
   rarity: string;
   number: string;
   rawPrice: number;

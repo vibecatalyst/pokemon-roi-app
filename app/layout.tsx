@@ -4,6 +4,7 @@ import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { FeesProvider } from "@/lib/fees-context";
 import { WatchlistProvider } from "@/lib/watchlist-context";
+import { SubmissionsProvider } from "@/lib/submissions-context";
 import Header from "@/components/Header";
 
 const geistSans = Geist({
@@ -32,8 +33,10 @@ export default function RootLayout({
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
           <FeesProvider>
             <WatchlistProvider>
-              <Header />
-              {children}
+              <SubmissionsProvider>
+                <Header />
+                {children}
+              </SubmissionsProvider>
             </WatchlistProvider>
           </FeesProvider>
         </body>

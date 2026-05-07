@@ -5,7 +5,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
 import { useWatchlist } from "@/lib/watchlist-context";
-import { addSubmission } from "@/lib/submissions";
+import { useSubmissions } from "@/lib/submissions-context";
+import { Submission } from "@/lib/submissions";
 import PriceChart from "@/components/PriceChart";
 import CardResult from "@/components/CardResult";
 
@@ -16,7 +17,7 @@ interface SubmitModalProps {
   card: MappedCard;
   fees: ReturnType<typeof useFees>["fees"];
   onClose: () => void;
-  onSubmit: (submission: Parameters<typeof addSubmission>[0]) => void;
+  onSubmit: (submission: Submission) => void;
 }
 
 function SubmitModal({ card, fees, onClose, onSubmit }: SubmitModalProps) {
@@ -144,6 +145,7 @@ function CardDetailInner() {
   const fromUrl = searchParams.get("from") ?? "/";
   const { fees } = useFees();
   const { addItem, removeItem, isWatched } = useWatchlist();
+  const { addItem: addSubmissionItem } = useSubmissions();
   const watched = isWatched(id);
 
   const [card, setCard] = useState<MappedCard | null>(null);
@@ -223,8 +225,8 @@ function CardDetailInner() {
           card={card}
           fees={fees}
           onClose={() => setShowSubmitModal(false)}
-          onSubmit={(submission) => {
-            addSubmission(submission);
+          onSubmit={async (submission) => {
+            await addSubmissionItem(submission);
             setShowSubmitModal(false);
             setSubmitSuccess(true);
             setTimeout(() => setSubmitSuccess(false), 3000);
