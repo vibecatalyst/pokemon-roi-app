@@ -30,6 +30,9 @@ type EnrichedCard = CardData & {
   psa9Price: number;
 };
 
+const NEG_INF = -999999;
+const POS_INF = 999999;
+
 function LeaderboardInner() {
   const { fees } = useFees();
   const router = useRouter();
@@ -52,9 +55,9 @@ function LeaderboardInner() {
   );
   const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
   const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "1") || 1);
-  const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
-  const [minRoi, setMinRoi] = useState(parseFloat(searchParams.get("minRoi") ?? "") || -Infinity);
-  const [maxRoi, setMaxRoi] = useState(parseFloat(searchParams.get("maxRoi") ?? "") || Infinity);
+  const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || POS_INF);
+  const [minRoi, setMinRoi] = useState(parseFloat(searchParams.get("minRoi") ?? "") || NEG_INF);
+  const [maxRoi, setMaxRoi] = useState(parseFloat(searchParams.get("maxRoi") ?? "") || POS_INF);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [showAll, setShowAll] = useState(false);
 
@@ -140,28 +143,38 @@ function LeaderboardInner() {
     updateUrl({ dir: next });
   }
 
-  function handleMinRoiChange(val: number) {
-  setMinRoi(val);
-  setShowAll(false);
-  updateUrl({ minRoi: val === -Infinity ? "" : String(val) });
-}
+  function handleMinRawChange(val: number) {
+    setMinRaw(val);
+    setShowAll(false);
+    updateUrl({ min: String(val) });
+  }
 
-  function handleMaxRawChange(val: number | typeof Infinity) {
+  function handleMaxRawChange(val: number) {
     setMaxRaw(val);
     setShowAll(false);
-    updateUrl({ max: val === Infinity ? "" : String(val) });
+    updateUrl({ max: val === POS_INF ? "" : String(val) });
   }
 
-  function handleMinRoiChange(val: number | typeof -Infinity) {
+  function handleMinRoiChange(val: number) {
     setMinRoi(val);
     setShowAll(false);
-    updateUrl({ minRoi: val === -Infinity ? "" : String(val) });
+    updateUrl({ minRoi: val === NEG_INF ? "" : String(val) });
   }
 
-  function handleMaxRoiChange(val: number | typeof Infinity) {
+  function handleMaxRoiChange(val: number) {
     setMaxRoi(val);
     setShowAll(false);
-    updateUrl({ maxRoi: val === Infinity ? "" : String(val) });
+    updateUrl({ maxRoi: val === POS_INF ? "" : String(val) });
+  }
+
+  function resetFilters() {
+    setRarityFilter("All");
+    setMinRaw(1);
+    setMaxRaw(POS_INF);
+    setMinRoi(NEG_INF);
+    setMaxRoi(POS_INF);
+    setShowAll(false);
+    updateUrl({ rarity: "", min: "1", max: "", minRoi: "", maxRoi: "" });
   }
 
   function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
@@ -350,10 +363,10 @@ function LeaderboardInner() {
               <span className="text-zinc-600 text-sm font-mono">—</span>
               <input
                 type="number"
-                value={maxRaw === Infinity ? "" : maxRaw}
+                value={maxRaw === POS_INF ? "" : maxRaw}
                 min={0}
                 placeholder="Max"
-                onChange={(e) => handleMaxRawChange(e.target.value === "" ? Infinity : parseFloat(e.target.value) || Infinity)}
+                onChange={(e) => handleMaxRawChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value) || POS_INF)}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
             </div>
@@ -364,17 +377,17 @@ function LeaderboardInner() {
             <div className="flex items-center gap-2">
               <input
                 type="number"
-                value={minRoi === -Infinity ? "" : minRoi}
+                value={minRoi === NEG_INF ? "" : minRoi}
                 placeholder="Min %"
-                onChange={(e) => handleMinRoiChange(e.target.value === "" ? -Infinity : parseFloat(e.target.value))}
+                onChange={(e) => handleMinRoiChange(e.target.value === "" ? NEG_INF : parseFloat(e.target.value))}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
               <span className="text-zinc-600 text-sm font-mono">—</span>
               <input
                 type="number"
-                value={maxRoi === Infinity ? "" : maxRoi}
+                value={maxRoi === POS_INF ? "" : maxRoi}
                 placeholder="Max %"
-                onChange={(e) => handleMaxRoiChange(e.target.value === "" ? Infinity : parseFloat(e.target.value))}
+                onChange={(e) => handleMaxRoiChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value))}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
             </div>
@@ -382,15 +395,7 @@ function LeaderboardInner() {
 
           <div className="flex items-end gap-2">
             <button
-              onClick={() => {
-                setMinRoi(-Infinity);
-                setMaxRoi(Infinity);
-                setMinRaw(1);
-                setMaxRaw(Infinity);
-                setRarityFilter("All");
-                setShowAll(false);
-                updateUrl({ minRoi: "", maxRoi: "", min: "1", max: "", rarity: "" });
-              }}
+              onClick={resetFilters}
               className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-white font-bold px-3 py-2.5 rounded-lg transition-colors text-xs font-mono whitespace-nowrap"
             >
               Reset Filters
@@ -482,14 +487,7 @@ function LeaderboardInner() {
           <div className="text-center py-20">
             <p className="text-zinc-500 font-mono text-sm">No cards match your current filters.</p>
             <button
-              onClick={() => {
-                setMinRoi(-Infinity);
-                setMaxRoi(Infinity);
-                setMinRaw(1);
-                setMaxRaw(Infinity);
-                setRarityFilter("All");
-                updateUrl({ minRoi: "", maxRoi: "", min: "1", max: "", rarity: "" });
-              }}
+              onClick={resetFilters}
               className="mt-3 text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors"
             >
               Reset all filters →
