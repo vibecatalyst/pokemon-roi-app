@@ -53,6 +53,8 @@ function LeaderboardInner() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
   const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "1") || 1);
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
+  const [minRoi, setMinRoi] = useState(parseFloat(searchParams.get("minRoi") ?? "") || -Infinity);
+  const [maxRoi, setMaxRoi] = useState(parseFloat(searchParams.get("maxRoi") ?? "") || Infinity);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [showAll, setShowAll] = useState(false);
 
@@ -150,6 +152,18 @@ function LeaderboardInner() {
     updateUrl({ max: val === Infinity ? "" : String(val) });
   }
 
+  function handleMinRoiChange(val: number | typeof -Infinity) {
+    setMinRoi(val);
+    setShowAll(false);
+    updateUrl({ minRoi: val === -Infinity ? "" : String(val) });
+  }
+
+  function handleMaxRoiChange(val: number | typeof Infinity) {
+    setMaxRoi(val);
+    setShowAll(false);
+    updateUrl({ maxRoi: val === Infinity ? "" : String(val) });
+  }
+
   function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
     e.stopPropagation();
     if (watchedIds.has(card.tcgPlayerId)) {
@@ -182,6 +196,7 @@ function LeaderboardInner() {
       .filter((c) => c.psa10Price > 0 && c.rawPrice >= minRaw && c.rawPrice <= maxRaw)
       .filter((c) => rarityFilter === "All" || c.rarity === rarityFilter)
       .map((c) => ({ ...c, ...calcProfit(c, fees) }))
+      .filter((c) => c.roi >= minRoi && c.roi <= maxRoi)
       .sort((a, b) => {
         let diff = 0;
         if (sortBy === "roi") diff = b.roi - a.roi;
@@ -192,7 +207,7 @@ function LeaderboardInner() {
         else diff = b.rawPrice - a.rawPrice;
         return sortDir === "desc" ? diff : -diff;
       });
-  }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw]);
+  }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw, minRoi, maxRoi]);
 
   const visibleCards = showAll ? filtered : filtered.slice(0, 10);
 
@@ -272,6 +287,7 @@ function LeaderboardInner() {
 
         {/* Controls */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
+
           <div className="flex-1 min-w-48">
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
             <select
@@ -321,7 +337,7 @@ function LeaderboardInner() {
           </div>
 
           <div>
-            <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE RANGE ($)</label>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE ($)</label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -343,7 +359,42 @@ function LeaderboardInner() {
             </div>
           </div>
 
-          <div className="flex items-end">
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">ROI % RANGE</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={minRoi === -Infinity ? "" : minRoi}
+                placeholder="Min %"
+                onChange={(e) => handleMinRoiChange(e.target.value === "" ? -Infinity : parseFloat(e.target.value))}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+              <span className="text-zinc-600 text-sm font-mono">—</span>
+              <input
+                type="number"
+                value={maxRoi === Infinity ? "" : maxRoi}
+                placeholder="Max %"
+                onChange={(e) => handleMaxRoiChange(e.target.value === "" ? Infinity : parseFloat(e.target.value))}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <button
+              onClick={() => {
+                setMinRoi(-Infinity);
+                setMaxRoi(Infinity);
+                setMinRaw(1);
+                setMaxRaw(Infinity);
+                setRarityFilter("All");
+                setShowAll(false);
+                updateUrl({ minRoi: "", maxRoi: "", min: "1", max: "", rarity: "" });
+              }}
+              className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-white font-bold px-3 py-2.5 rounded-lg transition-colors text-xs font-mono whitespace-nowrap"
+            >
+              Reset Filters
+            </button>
             <button
               onClick={exportToCSV}
               disabled={filtered.length === 0}
@@ -430,7 +481,19 @@ function LeaderboardInner() {
         {!loading && selectedSet && filtered.length === 0 && cards.length > 0 && (
           <div className="text-center py-20">
             <p className="text-zinc-500 font-mono text-sm">No cards match your current filters.</p>
-            <p className="text-zinc-600 text-xs mt-2">Try adjusting the price range or rarity filter.</p>
+            <button
+              onClick={() => {
+                setMinRoi(-Infinity);
+                setMaxRoi(Infinity);
+                setMinRaw(1);
+                setMaxRaw(Infinity);
+                setRarityFilter("All");
+                updateUrl({ minRoi: "", maxRoi: "", min: "1", max: "", rarity: "" });
+              }}
+              className="mt-3 text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors"
+            >
+              Reset all filters →
+            </button>
           </div>
         )}
 
@@ -515,7 +578,6 @@ function LeaderboardInner() {
               </table>
             </div>
 
-            {/* Footer */}
             <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between gap-4 flex-wrap">
               <span className="text-xs text-zinc-600 font-mono">
                 Showing {visibleCards.length} of {filtered.length} cards
@@ -523,7 +585,6 @@ function LeaderboardInner() {
                   <span className="text-zinc-700"> · top 10 by {sortBy === "roi" ? "ROI" : sortBy === "profit" ? "profit" : sortBy === "roi9" ? "PSA 9 ROI" : sortBy === "profit9" ? "PSA 9 profit" : sortBy === "psa10" ? "PSA 10 price" : "raw price"}</span>
                 )}
               </span>
-
               <div className="flex items-center gap-3">
                 {filtered.length > 10 && (
                   <button
