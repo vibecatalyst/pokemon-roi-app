@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { getSubmissions, Submission } from "@/lib/submissions";
+import { useSubmissions } from "@/lib/submissions-context";
+import { Submission } from "@/lib/submissions";
 import { useFees } from "@/lib/fees-context";
 import Link from "next/link";
 
@@ -54,7 +55,7 @@ const GRADE_BAR_COLORS: Record<number, string> = {
 };
 
 export default function Profit() {
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const { submissions, loading } = useSubmissions();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "completed" | "grades">("overview");
   const { fees } = useFees();
@@ -62,7 +63,6 @@ export default function Profit() {
 
   useEffect(() => {
     setMounted(true);
-    setSubmissions(getSubmissions());
   }, []);
 
   const stats = useMemo(() => {
@@ -128,14 +128,8 @@ export default function Profit() {
       const expected = calcExpected(s, fees.ebayFeePercent);
       const actual = calcActual(s, fees.ebayFeePercent);
       return [
-        s.name,
-        s.set,
-        s.rarity,
-        s.number,
-        s.status,
-        s.rawPrice.toFixed(2),
-        s.gradingFee.toFixed(2),
-        s.shippingCost.toFixed(2),
+        s.name, s.set, s.rarity, s.number, s.status,
+        s.rawPrice.toFixed(2), s.gradingFee.toFixed(2), s.shippingCost.toFixed(2),
         expected.totalCost.toFixed(2),
         s.psa10Price > 0 ? s.psa10Price.toFixed(2) : "",
         s.psa9Price > 0 ? s.psa9Price.toFixed(2) : "",
@@ -175,7 +169,6 @@ export default function Profit() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div>
             <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
@@ -183,7 +176,12 @@ export default function Profit() {
               <span className="text-white">PROFIT </span>
               <span className="text-emerald-400">SUMMARY</span>
             </h1>
-            <p className="text-zinc-500 text-sm mt-1">Your grading performance and realized returns</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-zinc-500 text-sm">Your grading performance and realized returns</p>
+              <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
+                ☁ Synced
+              </span>
+            </div>
           </div>
           {submissions.length > 0 && (
             <button
@@ -195,18 +193,21 @@ export default function Profit() {
           )}
         </div>
 
-        {/* Empty state */}
-        {submissions.length === 0 && (
+        {loading && (
+          <div className="text-center py-8">
+            <div className="text-2xl mb-2 animate-spin inline-block">⟳</div>
+            <p className="text-zinc-500 font-mono text-sm">Loading from cloud...</p>
+          </div>
+        )}
+
+        {!loading && submissions.length === 0 && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">📊</div>
             <p className="text-zinc-500 font-mono text-sm mb-2">No submission data yet</p>
             <p className="text-zinc-700 text-xs mb-6 max-w-sm mx-auto">
               Add cards to your submission tracker and mark them as returned with a sold price to see your profit and loss summary here
             </p>
-            <Link
-              href="/submissions"
-              className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm"
-            >
+            <Link href="/submissions" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
               Go to Submission Tracker
             </Link>
           </div>
@@ -215,19 +216,9 @@ export default function Profit() {
         {stats && (
           <div className="space-y-6">
 
-            {/* Top stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard
-                label="Total submitted"
-                value={String(submissions.length)}
-                sub={stats.inProgress.length + " in progress"}
-              />
-              <StatCard
-                label="Total invested"
-                value={"$" + stats.totalInvested.toFixed(0)}
-                sub="across all submissions"
-                color="text-yellow-400"
-              />
+              <StatCard label="Total submitted" value={String(submissions.length)} sub={stats.inProgress.length + " in progress"} />
+              <StatCard label="Total invested" value={"$" + stats.totalInvested.toFixed(0)} sub="across all submissions" color="text-yellow-400" />
               <StatCard
                 label="Realized profit"
                 value={(stats.realizedProfit >= 0 ? "+" : "") + "$" + stats.realizedProfit.toFixed(0)}
@@ -242,7 +233,6 @@ export default function Profit() {
               />
             </div>
 
-            {/* Performance stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard
                 label="Win rate"
@@ -256,17 +246,8 @@ export default function Profit() {
                 sub="on completed sales"
                 color={stats.avgRoi >= 0 ? "text-emerald-400" : "text-red-400"}
               />
-              <StatCard
-                label="PSA 10 rate"
-                value={stats.psa10Rate.toFixed(0) + "%"}
-                sub="of graded cards"
-                color="text-yellow-400"
-              />
-              <StatCard
-                label="Cards graded"
-                value={String(stats.completed.length)}
-                sub={stats.withSale.length + " sold"}
-              />
+              <StatCard label="PSA 10 rate" value={stats.psa10Rate.toFixed(0) + "%"} sub="of graded cards" color="text-yellow-400" />
+              <StatCard label="Cards graded" value={String(stats.completed.length)} sub={stats.withSale.length + " sold"} />
             </div>
 
             {/* Tabs */}
@@ -284,7 +265,6 @@ export default function Profit() {
                 ))}
               </div>
 
-              {/* Best & Worst tab */}
               {activeTab === "overview" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {stats.withSale.length === 0 && (
@@ -314,22 +294,10 @@ export default function Profit() {
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                          <div className="bg-zinc-800/40 rounded-lg p-2">
-                            <p className="text-zinc-600">Paid</p>
-                            <p className="text-white">${stats.bestCard.rawPrice.toFixed(2)}</p>
-                          </div>
-                          <div className="bg-zinc-800/40 rounded-lg p-2">
-                            <p className="text-zinc-600">Sold for</p>
-                            <p className="text-white">${(stats.bestCard.soldPrice ?? 0).toFixed(2)}</p>
-                          </div>
-                          <div className="bg-emerald-500/10 rounded-lg p-2">
-                            <p className="text-zinc-600">Profit</p>
-                            <p className="text-emerald-400 font-bold">+${actual.profit.toFixed(2)}</p>
-                          </div>
-                          <div className="bg-emerald-500/10 rounded-lg p-2">
-                            <p className="text-zinc-600">ROI</p>
-                            <p className="text-emerald-400 font-bold">+{actual.roi.toFixed(0)}%</p>
-                          </div>
+                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-600">Paid</p><p className="text-white">${stats.bestCard.rawPrice.toFixed(2)}</p></div>
+                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-600">Sold for</p><p className="text-white">${(stats.bestCard.soldPrice ?? 0).toFixed(2)}</p></div>
+                          <div className="bg-emerald-500/10 rounded-lg p-2"><p className="text-zinc-600">Profit</p><p className="text-emerald-400 font-bold">+${actual.profit.toFixed(2)}</p></div>
+                          <div className="bg-emerald-500/10 rounded-lg p-2"><p className="text-zinc-600">ROI</p><p className="text-emerald-400 font-bold">+{actual.roi.toFixed(0)}%</p></div>
                         </div>
                       </div>
                     );
@@ -356,25 +324,15 @@ export default function Profit() {
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                          <div className="bg-zinc-800/40 rounded-lg p-2">
-                            <p className="text-zinc-600">Paid</p>
-                            <p className="text-white">${stats.worstCard.rawPrice.toFixed(2)}</p>
-                          </div>
-                          <div className="bg-zinc-800/40 rounded-lg p-2">
-                            <p className="text-zinc-600">Sold for</p>
-                            <p className="text-white">${(stats.worstCard.soldPrice ?? 0).toFixed(2)}</p>
-                          </div>
+                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-600">Paid</p><p className="text-white">${stats.worstCard.rawPrice.toFixed(2)}</p></div>
+                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-600">Sold for</p><p className="text-white">${(stats.worstCard.soldPrice ?? 0).toFixed(2)}</p></div>
                           <div className="bg-red-500/10 rounded-lg p-2">
                             <p className="text-zinc-600">Profit</p>
-                            <p className={"font-bold " + (actual.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {actual.profit >= 0 ? "+" : ""}${actual.profit.toFixed(2)}
-                            </p>
+                            <p className={"font-bold " + (actual.profit >= 0 ? "text-emerald-400" : "text-red-400")}>{actual.profit >= 0 ? "+" : ""}${actual.profit.toFixed(2)}</p>
                           </div>
                           <div className="bg-red-500/10 rounded-lg p-2">
                             <p className="text-zinc-600">ROI</p>
-                            <p className={"font-bold " + (actual.roi >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {actual.roi >= 0 ? "+" : ""}{actual.roi.toFixed(0)}%
-                            </p>
+                            <p className={"font-bold " + (actual.roi >= 0 ? "text-emerald-400" : "text-red-400")}>{actual.roi >= 0 ? "+" : ""}{actual.roi.toFixed(0)}%</p>
                           </div>
                         </div>
                       </div>
@@ -383,13 +341,10 @@ export default function Profit() {
                 </div>
               )}
 
-              {/* All completed tab */}
               {activeTab === "completed" && (
                 <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
                   {stats.completed.length === 0 ? (
-                    <div className="text-center py-12 text-zinc-600 font-mono text-sm">
-                      No completed submissions yet.
-                    </div>
+                    <div className="text-center py-12 text-zinc-600 font-mono text-sm">No completed submissions yet.</div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -408,9 +363,7 @@ export default function Profit() {
                           {stats.completed.map((s) => {
                             const actual = calcActual(s, fees.ebayFeePercent);
                             const totalCost = s.rawPrice + s.gradingFee + s.shippingCost;
-                            const profitColor = actual
-                              ? actual.profit >= 0 ? "text-emerald-400" : "text-red-400"
-                              : "text-zinc-600";
+                            const profitColor = actual ? (actual.profit >= 0 ? "text-emerald-400" : "text-red-400") : "text-zinc-600";
                             return (
                               <tr
                                 key={s.id}
@@ -428,18 +381,12 @@ export default function Profit() {
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                   {s.actualGrade ? (
-                                    <span className={"text-sm font-black font-mono " + (GRADE_COLORS[s.actualGrade] ?? "text-zinc-400")}>
-                                      PSA {s.actualGrade}
-                                    </span>
-                                  ) : (
-                                    <span className="text-zinc-600 text-xs font-mono">—</span>
-                                  )}
+                                    <span className={"text-sm font-black font-mono " + (GRADE_COLORS[s.actualGrade] ?? "text-zinc-400")}>PSA {s.actualGrade}</span>
+                                  ) : <span className="text-zinc-600 text-xs font-mono">—</span>}
                                 </td>
                                 <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">${s.rawPrice.toFixed(2)}</td>
                                 <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${totalCost.toFixed(2)}</td>
-                                <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">
-                                  {s.soldPrice ? "$" + s.soldPrice.toFixed(2) : "—"}
-                                </td>
+                                <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">{s.soldPrice ? "$" + s.soldPrice.toFixed(2) : "—"}</td>
                                 <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + profitColor}>
                                   {actual ? (actual.profit >= 0 ? "+" : "") + "$" + actual.profit.toFixed(2) : "—"}
                                 </td>
@@ -453,12 +400,9 @@ export default function Profit() {
                       </table>
                       <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
                         <span className="text-xs text-zinc-600 font-mono">
-                          {stats.completed.length} completed · {stats.withSale.length} with sale data · click any row to view card details
+                          {stats.completed.length} completed · {stats.withSale.length} with sale data
                         </span>
-                        <button
-                          onClick={exportToCSV}
-                          className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
-                        >
+                        <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs">
                           Export CSV
                         </button>
                       </div>
@@ -467,13 +411,10 @@ export default function Profit() {
                 </div>
               )}
 
-              {/* Grade distribution tab */}
               {activeTab === "grades" && (
                 <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
                   {stats.completed.length === 0 ? (
-                    <div className="text-center py-12 text-zinc-600 font-mono text-sm">
-                      No graded cards yet.
-                    </div>
+                    <div className="text-center py-12 text-zinc-600 font-mono text-sm">No graded cards yet.</div>
                   ) : (
                     <div className="space-y-4">
                       <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest mb-6">
