@@ -140,11 +140,11 @@ function LeaderboardInner() {
     updateUrl({ dir: next });
   }
 
-  function handleMinRawChange(val: number) {
-    setMinRaw(val);
-    setShowAll(false);
-    updateUrl({ min: String(val) });
-  }
+  function handleMinRoiChange(val: number) {
+  setMinRoi(val);
+  setShowAll(false);
+  updateUrl({ minRoi: val === -Infinity ? "" : String(val) });
+}
 
   function handleMaxRawChange(val: number | typeof Infinity) {
     setMaxRaw(val);
