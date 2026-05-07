@@ -54,6 +54,7 @@ function LeaderboardInner() {
   const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "1") || 1);
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || Infinity);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState(false);
 
   function updateUrl(params: Record<string, string>) {
     const current = new URLSearchParams(searchParams.toString());
@@ -89,6 +90,7 @@ function LeaderboardInner() {
     setLoading(true);
     setError("");
     setCards([]);
+    setShowAll(false);
     try {
       const res = await fetch("/api/set-cards?set=" + encodeURIComponent(setName));
       const json = await res.json();
@@ -119,27 +121,32 @@ function LeaderboardInner() {
 
   function handleRarityChange(rarity: string) {
     setRarityFilter(rarity);
+    setShowAll(false);
     updateUrl({ rarity: rarity === "All" ? "" : rarity });
   }
 
   function handleSortByChange(sort: typeof sortBy) {
     setSortBy(sort);
+    setShowAll(false);
     updateUrl({ sort });
   }
 
   function handleSortDirChange() {
     const next = sortDir === "desc" ? "asc" : "desc";
     setSortDir(next);
+    setShowAll(false);
     updateUrl({ dir: next });
   }
 
   function handleMinRawChange(val: number) {
     setMinRaw(val);
+    setShowAll(false);
     updateUrl({ min: String(val) });
   }
 
   function handleMaxRawChange(val: number | typeof Infinity) {
     setMaxRaw(val);
+    setShowAll(false);
     updateUrl({ max: val === Infinity ? "" : String(val) });
   }
 
@@ -186,6 +193,8 @@ function LeaderboardInner() {
         return sortDir === "desc" ? diff : -diff;
       });
   }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw]);
+
+  const visibleCards = showAll ? filtered : filtered.slice(0, 10);
 
   const setStats = useMemo(() => {
     if (cards.length === 0) return null;
@@ -447,7 +456,7 @@ function LeaderboardInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((card, idx) => {
+                  {visibleCards.map((card, idx) => {
                     const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
                     const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
                     const isWatched = watchedIds.has(card.tcgPlayerId);
@@ -505,16 +514,35 @@ function LeaderboardInner() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between gap-4 flex-wrap">
               <span className="text-xs text-zinc-600 font-mono">
-                {filtered.length} cards · {cards.filter(c => c.psa10Price > 0).length} with PSA 10 data · {cards.length} total · click row for details
+                Showing {visibleCards.length} of {filtered.length} cards
+                {!showAll && filtered.length > 10 && (
+                  <span className="text-zinc-700"> · top 10 by {sortBy === "roi" ? "ROI" : sortBy === "profit" ? "profit" : sortBy === "roi9" ? "PSA 9 ROI" : sortBy === "profit9" ? "PSA 9 profit" : sortBy === "psa10" ? "PSA 10 price" : "raw price"}</span>
+                )}
               </span>
-              <button
-                onClick={exportToCSV}
-                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
-              >
-                Export CSV
-              </button>
+
+              <div className="flex items-center gap-3">
+                {filtered.length > 10 && (
+                  <button
+                    onClick={() => setShowAll(!showAll)}
+                    className={"text-sm font-mono font-bold px-4 py-1.5 rounded-lg border transition-colors " +
+                      (showAll
+                        ? "border-zinc-600 text-zinc-400 hover:text-white"
+                        : "border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20")}
+                  >
+                    {showAll ? "↑ Show top 10" : "↓ Show all " + filtered.length + " cards"}
+                  </button>
+                )}
+                <button
+                  onClick={exportToCSV}
+                  className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
+                >
+                  Export CSV
+                </button>
+              </div>
             </div>
           </div>
         )}
