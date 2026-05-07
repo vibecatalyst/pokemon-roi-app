@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFees, PSA_TIERS } from "@/lib/fees-context";
+import { SignInButton, UserButton, useAuth } from "@clerk/nextjs";
 
 interface UsageData {
   dailyLimit: number | null;
@@ -43,6 +44,7 @@ export default function Header() {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const { fees, setFees, psaTier, setPsaTier } = useFees();
+  const { isSignedIn } = useAuth();
   const pathname = usePathname();
 
   const update = (key: keyof typeof fees, val: number) =>
@@ -134,6 +136,17 @@ export default function Header() {
 
           <div className="flex items-center gap-2">
 
+            {/* Auth */}
+            {!isSignedIn ? (
+              <SignInButton mode="modal">
+                <button className="text-sm px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono">
+                  Sign In
+                </button>
+              </SignInButton>
+            ) : (
+              <UserButton appearance={{ elements: { avatarBox: "w-8 h-8" } }} />
+            )}
+
             {/* API usage button */}
             <button
               onClick={toggleUsagePanel}
@@ -219,8 +232,6 @@ export default function Header() {
 
               {usage && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                  {/* Daily usage */}
                   <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Daily Credits</p>
@@ -249,7 +260,6 @@ export default function Header() {
                     )}
                   </div>
 
-                  {/* Per minute usage */}
                   <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4 space-y-3">
                     <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Per Minute</p>
                     <div className="flex items-end gap-2">
@@ -270,7 +280,6 @@ export default function Header() {
                       Resets every 60 seconds
                     </p>
                   </div>
-
                 </div>
               )}
             </div>
