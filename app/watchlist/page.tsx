@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { getWatchlist, removeFromWatchlist, WatchlistItem } from "@/lib/watchlist";
+import { dbGetWatchlist, dbRemoveFromWatchlist } from "@/lib/db";
 import { useFees } from "@/lib/fees-context";
 import Link from "next/link";
 
@@ -15,9 +17,25 @@ function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFee
   return { profit, roi, totalCosts, saleProceeds, breakEven };
 }
 
+function mapDbItem(row: Record<string, unknown>): WatchlistItem {
+  return {
+    tcgPlayerId: String(row.tcg_player_id ?? ""),
+    name: String(row.name ?? ""),
+    set: String(row.set_name ?? ""),
+    image: row.image ? String(row.image) : undefined,
+    rawPrice: Number(row.raw_price ?? 0),
+    psa10Price: Number(row.psa10_price ?? 0),
+    psa9Price: Number(row.psa9_price ?? 0),
+    rarity: String(row.rarity ?? ""),
+    number: String(row.number ?? ""),
+    addedAt: String(row.added_at ?? new Date().toISOString()),
+  };
+}
+
 export default function Watchlist() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("added");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -25,16 +43,40 @@ export default function Watchlist() {
   const [refreshProgress, setRefreshProgress] = useState(0);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const { fees } = useFees();
+  const { isSignedIn } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
-    setItems(getWatchlist());
-  }, []);
+    loadItems();
+  }, [isSignedIn]);
 
-  function handleRemove(tcgPlayerId: string) {
-    removeFromWatchlist(tcgPlayerId);
+  async function loadItems() {
+    if (isSignedIn) {
+      setSyncing(true);
+      try {
+        const data = await dbGetWatchlist();
+        if (data) {
+          setItems(data.map(mapDbItem));
+          return;
+        }
+      } catch {
+        // fall back to localStorage
+      } finally {
+        setSyncing(false);
+      }
+    }
     setItems(getWatchlist());
+  }
+
+  async function handleRemove(tcgPlayerId: string) {
+    if (isSignedIn) {
+      await dbRemoveFromWatchlist(tcgPlayerId);
+      await loadItems();
+    } else {
+      removeFromWatchlist(tcgPlayerId);
+      setItems(getWatchlist());
+    }
   }
 
   async function handleRefreshAll() {
@@ -63,13 +105,24 @@ export default function Watchlist() {
           updated[i] = { ...updated[i], rawPrice, psa10Price, psa9Price };
         }
       } catch {
-        // keep existing price if fetch fails
+        // keep existing price
       }
       setRefreshProgress(i + 1);
       await new Promise((r) => setTimeout(r, 300));
     }
 
-    localStorage.setItem("pokeroi-watchlist", JSON.stringify(updated));
+    if (isSignedIn) {
+      for (const item of updated) {
+        await fetch("/api/db/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(item),
+        });
+      }
+    } else {
+      localStorage.setItem("pokeroi-watchlist", JSON.stringify(updated));
+    }
+
     setItems(updated);
     setRefreshing(false);
     setRefreshProgress(0);
@@ -77,12 +130,8 @@ export default function Watchlist() {
   }
 
   function toggleSort(key: typeof sortBy) {
-    if (sortBy === key) {
-      setSortDir(sortDir === "desc" ? "asc" : "desc");
-    } else {
-      setSortBy(key);
-      setSortDir("desc");
-    }
+    if (sortBy === key) setSortDir(sortDir === "desc" ? "asc" : "desc");
+    else { setSortBy(key); setSortDir("desc"); }
   }
 
   function cardUrl(tcgPlayerId: string) {
@@ -152,7 +201,6 @@ export default function Watchlist() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div>
             <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
@@ -160,7 +208,19 @@ export default function Watchlist() {
               <span className="text-white">MY </span>
               <span className="text-blue-400">WATCHLIST</span>
             </h1>
-            <p className="text-zinc-500 text-sm mt-1">Cards you are tracking for grading opportunities</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-zinc-500 text-sm">Cards you are tracking for grading opportunities</p>
+              {isSignedIn && (
+                <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
+                  ☁ Synced
+                </span>
+              )}
+              {!isSignedIn && (
+                <span className="text-xs bg-zinc-800 border border-zinc-700 text-zinc-500 px-2 py-0.5 rounded-full font-mono">
+                  💾 Local only
+                </span>
+              )}
+            </div>
           </div>
 
           {items.length > 0 && (
@@ -208,7 +268,13 @@ export default function Watchlist() {
           )}
         </div>
 
-        {/* Last refreshed */}
+        {syncing && (
+          <div className="text-center py-8">
+            <div className="text-2xl mb-2 animate-spin inline-block">⟳</div>
+            <p className="text-zinc-500 font-mono text-sm">Loading from cloud...</p>
+          </div>
+        )}
+
         {lastRefreshed && (
           <p className="text-xs text-zinc-600 font-mono mb-4">
             Prices last refreshed at {lastRefreshed.toLocaleTimeString()}
@@ -251,11 +317,11 @@ export default function Watchlist() {
         )}
 
         {/* Empty state */}
-        {items.length === 0 && (
+        {!syncing && items.length === 0 && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">👀</div>
             <p className="text-zinc-500 font-mono text-sm mb-2">Your watchlist is empty</p>
-            <p className="text-zinc-700 text-xs mb-6">Search for cards and click the bookmark icon to add them here</p>
+            <p className="text-zinc-700 text-xs mb-6">Search for cards and click the star icon to add them here</p>
             <Link href="/" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
               Search Cards
             </Link>
@@ -353,7 +419,6 @@ export default function Watchlist() {
                           <tr key={item.tcgPlayerId + "-expanded"} className="border-b border-zinc-800">
                             <td colSpan={12} className="px-4 py-4 bg-zinc-900/40">
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
                                 {item.psa10Price > 0 && (
                                   <div className="bg-yellow-400/5 border border-yellow-400/10 rounded-xl p-4 space-y-2">
                                     <div className="flex justify-between items-center">
@@ -382,9 +447,7 @@ export default function Watchlist() {
                                         </p>
                                       </div>
                                     </div>
-                                    <p className="text-xs font-mono text-zinc-500 pt-1">
-                                      Break-even: ${r10.breakEven.toFixed(2)}
-                                    </p>
+                                    <p className="text-xs font-mono text-zinc-500">Break-even: ${r10.breakEven.toFixed(2)}</p>
                                   </div>
                                 )}
 
@@ -416,9 +479,7 @@ export default function Watchlist() {
                                         </p>
                                       </div>
                                     </div>
-                                    <p className="text-xs font-mono text-zinc-500 pt-1">
-                                      Break-even: ${r9.breakEven.toFixed(2)}
-                                    </p>
+                                    <p className="text-xs font-mono text-zinc-500">Break-even: ${r9.breakEven.toFixed(2)}</p>
                                   </div>
                                 )}
                               </div>

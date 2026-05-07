@@ -2,7 +2,7 @@ export interface WatchlistItem {
   tcgPlayerId: string;
   name: string;
   set: string;
-  image: string;
+  image?: string;
   rawPrice: number;
   psa10Price: number;
   psa9Price: number;
