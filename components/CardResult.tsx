@@ -24,147 +24,87 @@ function StatBox({ label, value, sub, highlight }: {
   const colors = { green: "text-emerald-400", red: "text-red-400", yellow: "text-yellow-400" };
   return (
     <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
-      <p className="text-xs text-zinc-500 font-mono mb-1">{label}</p>
+      <p className="text-xs text-zinc-400 font-mono mb-1">{label}</p>
       <p className={`text-2xl font-black font-mono ${highlight ? colors[highlight] : "text-white"}`}>{value}</p>
-      {sub && <p className="text-xs text-zinc-600 mt-0.5">{sub}</p>}
-    </div>
-  );
-}
-
-function GradePanel({
-  label,
-  gradeColor,
-  salePrice,
-  rawPrice,
-  fees,
-  accent,
-}: {
-  label: string;
-  gradeColor: string;
-  salePrice: number;
-  rawPrice: number;
-  fees: FeeSettings;
-  accent: string;
-}) {
-  if (salePrice <= 0) {
-    return (
-      <div className="bg-zinc-800/20 border border-zinc-800 rounded-2xl p-5 flex items-center justify-center">
-        <p className="text-zinc-600 font-mono text-sm text-center">No {label} eBay data available</p>
-      </div>
-    );
-  }
-
-  const r = calcROI(salePrice, rawPrice, fees);
-  const roiColor = r.profit > 0 ? "green" : r.profit < 0 ? "red" : "yellow";
-
-  return (
-    <div className={`border rounded-2xl p-5 space-y-4 ${accent}`}>
-      <div className="flex items-center justify-between">
-        <h3 className={`text-lg font-black ${gradeColor}`}>{label}</h3>
-        <span className={`text-2xl font-black font-mono ${gradeColor}`}>${salePrice.toFixed(2)}</span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <StatBox label="Total cost" value={`$${r.totalCosts.toFixed(2)}`} sub="incl. grading & shipping" />
-        <StatBox label="Sale proceeds" value={`$${r.saleProceeds.toFixed(2)}`} sub={`after ${fees.ebayFeePercent}% fee`} />
-        <StatBox label="Net profit" value={`${r.profit >= 0 ? "+" : ""}$${r.profit.toFixed(2)}`} highlight={roiColor} />
-        <StatBox label="ROI" value={`${r.roi >= 0 ? "+" : ""}${r.roi.toFixed(1)}%`} sub={`${(r.saleProceeds / r.totalCosts).toFixed(2)}x money`} highlight={roiColor} />
-      </div>
-
-      <div className="bg-zinc-800/30 rounded-xl p-3 space-y-1.5">
-        <p className="text-xs text-zinc-500 font-mono mb-2">Cost Breakdown</p>
-        {[
-          { label: "Raw card price", value: rawPrice },
-          fees.buyingFeePercent > 0 ? { label: `Buying premium (${fees.buyingFeePercent}%)`, value: r.buyPrice - rawPrice } : null,
-          { label: "PSA grading fee", value: fees.gradingFee },
-          { label: "Shipping to grader", value: fees.shippingToGrader },
-          { label: "Shipping back", value: fees.shippingBack },
-          { label: `eBay fee (${fees.ebayFeePercent}%)`, value: -r.ebayFee },
-        ].filter(Boolean).map((item) => (
-          <div key={item!.label} className="flex justify-between items-center">
-            <span className="text-xs text-zinc-500">{item!.label}</span>
-            <span className={`text-xs font-mono font-bold ${item!.value < 0 ? "text-red-400" : "text-zinc-300"}`}>
-              {item!.value < 0 ? `-$${Math.abs(item!.value).toFixed(2)}` : `$${item!.value.toFixed(2)}`}
-            </span>
-          </div>
-        ))}
-        <div className="border-t border-zinc-700 pt-2 flex justify-between items-center">
-          <span className="text-xs text-zinc-400 font-bold">Break-even sale price</span>
-          <span className="text-sm font-mono font-black text-yellow-400">${r.breakEven.toFixed(2)}</span>
-        </div>
-      </div>
-
-      <div className={`rounded-xl p-3 border ${
-        r.profit > 0
-          ? "bg-emerald-500/10 border-emerald-500/20"
-          : r.profit < 0
-          ? "bg-red-500/10 border-red-500/20"
-          : "bg-zinc-800/40 border-zinc-700"
-      }`}>
-        <p className="text-xs font-mono mb-1 text-zinc-500">Verdict</p>
-        <p className={`font-bold text-sm ${r.profit > 0 ? "text-emerald-400" : r.profit < 0 ? "text-red-400" : "text-zinc-400"}`}>
-          {r.profit > 50
-            ? `✅ Strong — net $${r.profit.toFixed(2)} (${r.roi.toFixed(0)}% ROI)`
-            : r.profit > 0
-            ? `🟡 Marginal — $${r.profit.toFixed(2)} after all fees`
-            : r.profit < 0
-            ? `❌ Loss — -$${Math.abs(r.profit).toFixed(2)} at current prices`
-            : "⚪ Break even"}
-        </p>
-      </div>
+      {sub && <p className="text-xs text-zinc-500 mt-0.5">{sub}</p>}
     </div>
   );
 }
 
 export default function CardResult({ card, fees }: Props) {
-  const hasPsa10 = card.psa10Price > 0;
-  const hasPsa9 = (card.psa9Price ?? 0) > 0;
-  const psa9Price = card.psa9Price ?? 0;
+  const psa10 = card.psa10Price > 0 ? calcROI(card.psa10Price, card.rawPrice, fees) : null;
+  const psa9 = card.psa9Price && card.psa9Price > 0 ? calcROI(card.psa9Price, card.rawPrice, fees) : null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+
       {/* Card header */}
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-        <div className="flex gap-5">
-          {card.image && (
-            <img src={card.image} alt={card.name} className="w-28 rounded-lg flex-shrink-0 shadow-xl" />
-          )}
-          <div className="flex-1 min-w-0">
-            <h2 className="text-2xl font-black text-white">{card.name}</h2>
-            <p className="text-zinc-400 text-sm mt-0.5">{card.set}</p>
-            {card.number && <p className="text-zinc-600 text-xs font-mono mt-1">#{card.number}</p>}
-            {card.rarity && (
-              <span className="inline-block mt-2 text-xs bg-zinc-800 border border-zinc-700 rounded-full px-3 py-0.5 text-zinc-400">
-                {card.rarity}
-              </span>
-            )}
+        <div className="flex flex-col sm:flex-row gap-6 items-start">
 
-            {/* Quick price summary */}
-            <div className="flex gap-3 mt-4 flex-wrap">
-              <div className="bg-zinc-800/60 rounded-lg px-3 py-2">
-                <p className="text-xs text-zinc-500 font-mono">Raw</p>
-                <p className="text-lg font-black text-white font-mono">
-                  {card.rawPrice > 0 ? `$${card.rawPrice.toFixed(2)}` : "N/A"}
+          {/* Card image — large and crisp */}
+          {card.image && (
+            <div className="flex-shrink-0 mx-auto sm:mx-0">
+              <img
+                src={card.image}
+                alt={card.name}
+                className="w-48 sm:w-56 rounded-xl shadow-2xl shadow-black/50 ring-1 ring-zinc-700"
+                style={{ imageRendering: "auto" }}
+              />
+            </div>
+          )}
+
+          {/* Card info */}
+          <div className="flex-1 min-w-0">
+            <h2 className="text-2xl sm:text-3xl font-black text-white mb-1">{card.name}</h2>
+            <p className="text-zinc-400 text-sm mb-4">{card.set} · {card.rarity} · #{card.number}</p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3">
+                <p className="text-xs text-zinc-400 font-mono mb-1">RAW PRICE</p>
+                <p className="text-xl font-black text-white font-mono">
+                  {card.rawPrice > 0 ? "$" + card.rawPrice.toFixed(2) : "N/A"}
                 </p>
+                <p className="text-xs text-zinc-500 mt-0.5">TCGPlayer market</p>
               </div>
-              {hasPsa9 && (
-                <div className="bg-blue-400/5 border border-blue-400/20 rounded-lg px-3 py-2">
-                  <p className="text-xs text-blue-400/60 font-mono">PSA 9</p>
-                  <p className="text-lg font-black text-blue-400 font-mono">${psa9Price.toFixed(2)}</p>
+
+              {card.psa10Price > 0 && (
+                <div className="bg-yellow-400/10 border border-yellow-400/20 rounded-xl p-3">
+                  <p className="text-xs text-yellow-400 font-mono mb-1">PSA 10</p>
+                  <p className="text-xl font-black text-yellow-400 font-mono">${card.psa10Price.toFixed(2)}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">Gem Mint</p>
                 </div>
               )}
-              {hasPsa10 && (
-                <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-lg px-3 py-2">
-                  <p className="text-xs text-yellow-400/60 font-mono">PSA 10</p>
-                  <p className="text-lg font-black text-yellow-400 font-mono">${card.psa10Price.toFixed(2)}</p>
+
+              {card.psa9Price && card.psa9Price > 0 && (
+                <div className="bg-blue-400/10 border border-blue-400/20 rounded-xl p-3">
+                  <p className="text-xs text-blue-400 font-mono mb-1">PSA 9</p>
+                  <p className="text-xl font-black text-blue-400 font-mono">${card.psa9Price.toFixed(2)}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">Mint</p>
                 </div>
               )}
-              {hasPsa9 && hasPsa10 && (
-                <div className="bg-zinc-800/60 rounded-lg px-3 py-2">
-                  <p className="text-xs text-zinc-500 font-mono">10 vs 9 premium</p>
-                  <p className="text-lg font-black text-white font-mono">
-                    +${(card.psa10Price - psa9Price).toFixed(2)}
+
+              <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3">
+                <p className="text-xs text-zinc-400 font-mono mb-1">GRADING COST</p>
+                <p className="text-xl font-black text-white font-mono">${(fees.gradingFee + fees.shippingToGrader + fees.shippingBack).toFixed(2)}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Fee + shipping</p>
+              </div>
+
+              <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3">
+                <p className="text-xs text-zinc-400 font-mono mb-1">TOTAL COST</p>
+                <p className="text-xl font-black text-white font-mono">
+                  {psa10 ? "$" + psa10.totalCosts.toFixed(2) : "N/A"}
+                </p>
+                <p className="text-xs text-zinc-500 mt-0.5">Raw + all fees</p>
+              </div>
+
+              {psa10 && (
+                <div className={"rounded-xl p-3 border " + (psa10.profit >= 0 ? "bg-emerald-400/10 border-emerald-400/20" : "bg-red-400/10 border-red-400/20")}>
+                  <p className={"text-xs font-mono mb-1 " + (psa10.profit >= 0 ? "text-emerald-400" : "text-red-400")}>BREAK EVEN</p>
+                  <p className={"text-xl font-black font-mono " + (psa10.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
+                    ${psa10.breakEven.toFixed(2)}
                   </p>
+                  <p className="text-xs text-zinc-500 mt-0.5">Min sale price</p>
                 </div>
               )}
             </div>
@@ -172,88 +112,114 @@ export default function CardResult({ card, fees }: Props) {
         </div>
       </div>
 
-      {/* No data state */}
-      {!hasPsa10 && !hasPsa9 && (
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 text-center text-zinc-600 font-mono text-sm">
-          No PSA eBay data available for this card yet.
+      {/* PSA 10 ROI */}
+      {psa10 && (
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-black text-white">PSA 10 — Gem Mint</h3>
+            <div className="text-right">
+              <p className={"text-3xl font-black font-mono " + (psa10.roi >= 0 ? "text-emerald-400" : "text-red-400")}>
+                {psa10.roi >= 0 ? "+" : ""}{psa10.roi.toFixed(0)}%
+              </p>
+              <p className="text-xs text-zinc-400 font-mono">ROI</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatBox
+              label="NET PROFIT"
+              value={(psa10.profit >= 0 ? "+" : "") + "$" + psa10.profit.toFixed(2)}
+              highlight={psa10.profit >= 0 ? "green" : "red"}
+            />
+            <StatBox
+              label="SALE PROCEEDS"
+              value={"$" + psa10.saleProceeds.toFixed(2)}
+              sub={"after " + fees.ebayFeePercent + "% platform fee"}
+            />
+            <StatBox
+              label="EBAY FEE"
+              value={"$" + psa10.ebayFee.toFixed(2)}
+              sub={fees.ebayFeePercent + "% of sale"}
+            />
+            <StatBox
+              label="TOTAL INVESTED"
+              value={"$" + psa10.totalCosts.toFixed(2)}
+              sub="raw + grading + shipping"
+            />
+          </div>
+
+          {/* Verdict */}
+          <div className={"mt-4 rounded-xl p-4 border " + (psa10.profit >= 0 ? "bg-emerald-400/5 border-emerald-400/20" : "bg-red-400/5 border-red-400/20")}>
+            <p className={"text-base font-bold " + (psa10.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
+              {psa10.profit >= 100
+                ? "🔥 Strong flip — high margin at PSA 10"
+                : psa10.profit >= 20
+                ? "✅ Profitable at PSA 10"
+                : psa10.profit >= 0
+                ? "⚠️ Barely profitable — thin margin"
+                : "❌ Not profitable at current prices"}
+            </p>
+            <p className="text-sm text-zinc-400 mt-1">
+              {psa10.profit >= 0
+                ? "You need to sell for at least $" + psa10.breakEven.toFixed(2) + " to break even."
+                : "Raw price + fees exceed PSA 10 market price. Wait for prices to move."}
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Grade comparison */}
-      {(hasPsa10 || hasPsa9) && card.rawPrice > 0 && (
-        <>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-zinc-800" />
-            <span className="text-xs text-zinc-600 font-mono uppercase tracking-widest">Grade Comparison</span>
-            <div className="flex-1 h-px bg-zinc-800" />
+      {/* PSA 9 ROI */}
+      {psa9 && (
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-black text-white">PSA 9 — Mint</h3>
+            <div className="text-right">
+              <p className={"text-3xl font-black font-mono " + (psa9.roi >= 0 ? "text-blue-400" : "text-red-400")}>
+                {psa9.roi >= 0 ? "+" : ""}{psa9.roi.toFixed(0)}%
+              </p>
+              <p className="text-xs text-zinc-400 font-mono">ROI</p>
+            </div>
           </div>
 
-          <div className={`grid gap-4 ${hasPsa9 && hasPsa10 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-            {hasPsa10 && (
-              <GradePanel
-                label="PSA 10 — Gem Mint"
-                gradeColor="text-yellow-400"
-                salePrice={card.psa10Price}
-                rawPrice={card.rawPrice}
-                fees={fees}
-                accent="bg-yellow-400/5 border-yellow-400/10"
-              />
-            )}
-            {hasPsa9 && (
-              <GradePanel
-                label="PSA 9 — Mint"
-                gradeColor="text-blue-400"
-                salePrice={psa9Price}
-                rawPrice={card.rawPrice}
-                fees={fees}
-                accent="bg-blue-400/5 border-blue-400/10"
-              />
-            )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatBox
+              label="NET PROFIT"
+              value={(psa9.profit >= 0 ? "+" : "") + "$" + psa9.profit.toFixed(2)}
+              highlight={psa9.profit >= 0 ? "green" : "red"}
+            />
+            <StatBox
+              label="SALE PROCEEDS"
+              value={"$" + psa9.saleProceeds.toFixed(2)}
+              sub={"after " + fees.ebayFeePercent + "% platform fee"}
+            />
+            <StatBox
+              label="EBAY FEE"
+              value={"$" + psa9.ebayFee.toFixed(2)}
+              sub={fees.ebayFeePercent + "% of sale"}
+            />
+            <StatBox
+              label="TOTAL INVESTED"
+              value={"$" + psa9.totalCosts.toFixed(2)}
+              sub="raw + grading + shipping"
+            />
           </div>
 
-          {/* Comparison callout */}
-          {hasPsa9 && hasPsa10 && (
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-              <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest mb-3">Which grade is better to target?</p>
-              {(() => {
-                const roi10 = calcROI(card.psa10Price, card.rawPrice, fees);
-                const roi9 = calcROI(psa9Price, card.rawPrice, fees);
-                const diff = roi10.profit - roi9.profit;
-                const bothProfitable = roi10.profit > 0 && roi9.profit > 0;
-                const neitherProfitable = roi10.profit <= 0 && roi9.profit <= 0;
-                return (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-yellow-400 font-mono">PSA 10 profit</span>
-                      <span className={`text-sm font-black font-mono ${roi10.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {roi10.profit >= 0 ? "+" : ""}${roi10.profit.toFixed(2)} ({roi10.roi.toFixed(0)}% ROI)
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-blue-400 font-mono">PSA 9 profit</span>
-                      <span className={`text-sm font-black font-mono ${roi9.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {roi9.profit >= 0 ? "+" : ""}${roi9.profit.toFixed(2)} ({roi9.roi.toFixed(0)}% ROI)
-                      </span>
-                    </div>
-                    <div className="border-t border-zinc-800 pt-2">
-                      <p className="text-sm text-white font-bold">
-                        {neitherProfitable
-                          ? "❌ Neither grade is profitable at current prices"
-                          : !bothProfitable && roi10.profit > 0
-                          ? "⚠️ Only profitable if you hit PSA 10 — PSA 9 is a loss"
-                          : !bothProfitable && roi9.profit > 0
-                          ? "✅ Even a PSA 9 is profitable on this card"
-                          : diff > 20
-                          ? `✅ PSA 10 is worth chasing — $${diff.toFixed(2)} more profit than a 9`
-                          : `🟡 PSA 9 is nearly as good — only $${diff.toFixed(2)} less than a 10`}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()}
+          {psa10 && (
+            <div className="mt-4 bg-zinc-800/40 border border-zinc-700 rounded-xl p-4">
+              <p className="text-sm font-bold text-white">
+                {psa10.profit > 0 && psa9.profit > 0 && psa10.profit - psa9.profit > 20
+                  ? "✅ PSA 10 worth chasing — $" + (psa10.profit - psa9.profit).toFixed(2) + " more profit than a 9"
+                  : psa10.profit > 0 && psa9.profit > 0
+                  ? "🟡 PSA 9 nearly as good — only $" + (psa10.profit - psa9.profit).toFixed(2) + " less than a 10"
+                  : psa10.profit > 0 && psa9.profit <= 0
+                  ? "⚠️ Only profitable if you hit PSA 10 — PSA 9 is a loss"
+                  : psa9.profit > 0 && psa10.profit <= 0
+                  ? "✅ Even a PSA 9 is profitable on this card"
+                  : "❌ Neither grade is profitable at current prices"}
+              </p>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
