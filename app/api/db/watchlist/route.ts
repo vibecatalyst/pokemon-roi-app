@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 
-export async function GET(req: NextRequest) {
-  const { userId } = getAuth(req);
+export async function GET() {
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data, error } = await supabase
     .from("watchlist")
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = getAuth(req);
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   const { data, error } = await supabase.from("watchlist").upsert({
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { userId } = getAuth(req);
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { tcgPlayerId } = await req.json();
   const { error } = await supabase
