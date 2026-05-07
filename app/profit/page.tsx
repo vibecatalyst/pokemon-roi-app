@@ -16,7 +16,7 @@ function calcExpected(s: Submission, ebayFee: number) {
 }
 
 function calcActual(s: Submission, ebayFee: number) {
-  if (!s.soldPrice || !s.actualGrade) return null;
+  if (!s.soldPrice) return null;
   const totalCost = s.rawPrice + s.gradingFee + s.shippingCost;
   const proceeds = s.soldPrice * (1 - ebayFee / 100);
   const profit = proceeds - totalCost;
@@ -69,7 +69,7 @@ export default function Profit() {
     if (!mounted || submissions.length === 0) return null;
 
     const completed = submissions.filter(s => s.status === "returned");
-    const withSale = completed.filter(s => s.soldPrice && s.actualGrade);
+    const withSale = completed.filter(s => s.soldPrice);
     const inProgress = submissions.filter(s => s.status !== "returned");
 
     const totalInvested = submissions.reduce((s, i) => s + i.rawPrice + i.gradingFee + i.shippingCost, 0);
