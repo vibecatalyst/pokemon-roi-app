@@ -4,47 +4,19 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { CardData } from "@/lib/types";
-import { addToWatchlist, removeFromWatchlist, isInWatchlist } from "@/lib/watchlist";
+import { useWatchlist } from "@/lib/watchlist-context";
 import Link from "next/link";
 
 interface TrendingCard extends CardData {
-  psa10Trend: string;
-  psa10Volume7Day: number;
-  psa10MarketPrice7Day: number;
-  psa9Trend: string;
-  psa9SmartPrice: number;
-  salesVelocityDaily: number;
-  salesVelocityWeekly: number;
+  trend: "up" | "down" | "stable";
+  trendPct: number;
 }
 
-function mapTrendingCard(c: Record<string, unknown>): TrendingCard {
-  const base = mapApiCard(c);
-  const ebay = (c.ebay as Record<string, unknown>) ?? {};
-  const salesByGrade = (ebay.salesByGrade as Record<string, Record<string, unknown>>) ?? {};
-  const salesVelocity = (ebay.salesVelocity as Record<string, number>) ?? {};
-  const psa10 = salesByGrade.psa10 ?? {};
-  const psa9 = salesByGrade.psa9 ?? {};
-  const psa9Smart = (psa9.smartMarketPrice as Record<string, number>) ?? {};
-  return {
-    ...base,
-    psa10Trend: String(psa10.marketTrend ?? "unknown"),
-    psa10Volume7Day: (psa10.dailyVolume7Day as number) ?? 0,
-    psa10MarketPrice7Day: (psa10.marketPrice7Day as number) ?? 0,
-    psa9Trend: String(psa9.marketTrend ?? "unknown"),
-    psa9SmartPrice: psa9Smart.price ?? 0,
-    salesVelocityDaily: salesVelocity.dailyAverage ?? 0,
-    salesVelocityWeekly: salesVelocity.weeklyAverage ?? 0,
-  };
-}
-
-const TREND_CONFIG = {
-  up: { label: "↑ Rising", color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-  down: { label: "↓ Falling", color: "text-red-400", bg: "bg-red-500/10 border-red-500/20" },
-  stable: { label: "→ Stable", color: "text-yellow-400", bg: "bg-yellow-500/10 border-yellow-500/20" },
-  unknown: { label: "— No data", color: "text-zinc-600", bg: "bg-zinc-800/30 border-zinc-700/30" },
-};
+const NEG_INF = -999999;
+const POS_INF = 999999;
 
 function TrendingInner() {
+  const { addItem, removeItem, isWatched } = useWatchlist();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -55,12 +27,14 @@ function TrendingInner() {
   const [setsLoading, setSetsLoading] = useState(true);
   const [error, setError] = useState("");
   const [trendFilter, setTrendFilter] = useState<"all" | "up" | "down" | "stable">(
-    (searchParams.get("trend") as "all" | "up" | "down" | "stable") ?? "up"
+    (searchParams.get("trend") as "all" | "up" | "down" | "stable") ?? "all"
   );
-  const [sortBy, setSortBy] = useState<"volume" | "velocity" | "price">(
-    (searchParams.get("sort") as "volume" | "velocity" | "price") ?? "volume"
+  const [sortBy, setSortBy] = useState<"trend" | "psa10" | "raw" | "name">(
+    (searchParams.get("sort") as "trend" | "psa10" | "raw" | "name") ?? "trend"
   );
-  const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
+  const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
+  const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "") || NEG_INF);
+  const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || POS_INF);
 
   function updateUrl(params: Record<string, string>) {
     const current = new URLSearchParams(searchParams.toString());
@@ -83,14 +57,14 @@ function TrendingInner() {
   }, []);
 
   useEffect(() => {
-    const setFromUrl = searchParams.get("set");
-    if (setFromUrl) {
-      setSelectedSet(setFromUrl);
-      fetchCards(setFromUrl);
+    const fromUrl = searchParams.get("set");
+    if (fromUrl) {
+      setSelectedSet(fromUrl);
+      fetchTrending(fromUrl);
     }
-  }, [searchParams.get("set")]);
+  }, []);
 
-  async function fetchCards(setName: string) {
+  async function fetchTrending(setName: string) {
     setLoading(true);
     setError("");
     setCards([]);
@@ -99,15 +73,18 @@ function TrendingInner() {
       const json = await res.json();
       if (json.error) { setError(json.message ?? json.error); return; }
       const raw = json.data ?? [];
-      const mapped = raw.map(mapTrendingCard);
-      setCards(mapped);
-      const watched = new Set<string>();
-      mapped.forEach((c: TrendingCard) => {
-        if (isInWatchlist(c.tcgPlayerId)) watched.add(c.tcgPlayerId);
+      const mapped = raw.map((item: Record<string, unknown>) => {
+        const card = mapApiCard(item);
+        const ebay = (item.ebay as Record<string, unknown>) ?? {};
+        const salesByGrade = (ebay.salesByGrade as Record<string, Record<string, unknown>>) ?? {};
+        const psa10 = salesByGrade.psa10 ?? {};
+        const trend = String(psa10.marketTrend ?? "stable") as "up" | "down" | "stable";
+        const trendPct = Number(psa10.marketTrendPercent ?? 0);
+        return { ...card, trend, trendPct };
       });
-      setWatchedIds(watched);
+      setCards(mapped);
     } catch {
-      setError("Failed to fetch data.");
+      setError("Failed to fetch trending data.");
     } finally {
       setLoading(false);
     }
@@ -116,26 +93,15 @@ function TrendingInner() {
   function handleSetChange(setName: string) {
     setSelectedSet(setName);
     updateUrl({ set: setName });
-    if (setName) fetchCards(setName);
+    if (setName) fetchTrending(setName);
   }
 
-  function handleTrendChange(trend: typeof trendFilter) {
-    setTrendFilter(trend);
-    updateUrl({ trend });
-  }
-
-  function handleSortChange(sort: typeof sortBy) {
-    setSortBy(sort);
-    updateUrl({ sort });
-  }
-
-  function toggleWatch(e: React.MouseEvent, card: TrendingCard) {
+  async function toggleWatch(e: React.MouseEvent, card: TrendingCard) {
     e.stopPropagation();
-    if (watchedIds.has(card.tcgPlayerId)) {
-      removeFromWatchlist(card.tcgPlayerId);
-      setWatchedIds(prev => { const next = new Set(prev); next.delete(card.tcgPlayerId); return next; });
+    if (isWatched(card.tcgPlayerId)) {
+      await removeItem(card.tcgPlayerId);
     } else {
-      addToWatchlist({
+      await addItem({
         tcgPlayerId: card.tcgPlayerId,
         name: card.name,
         set: card.set,
@@ -147,40 +113,44 @@ function TrendingInner() {
         number: card.number,
         addedAt: new Date().toISOString(),
       });
-      setWatchedIds(prev => new Set(prev).add(card.tcgPlayerId));
     }
   }
 
   const filtered = useMemo(() => {
     return cards
-      .filter((c) => c.psa10Price > 0)
-      .filter((c) => trendFilter === "all" || c.psa10Trend === trendFilter)
+      .filter(c => trendFilter === "all" || c.trend === trendFilter)
+      .filter(c => c.rawPrice >= minRaw && c.rawPrice <= maxRaw)
       .sort((a, b) => {
-        if (sortBy === "volume") return b.psa10Volume7Day - a.psa10Volume7Day;
-        if (sortBy === "velocity") return b.salesVelocityWeekly - a.salesVelocityWeekly;
-        return b.psa10MarketPrice7Day - a.psa10MarketPrice7Day;
+        let diff = 0;
+        if (sortBy === "trend") diff = b.trendPct - a.trendPct;
+        else if (sortBy === "psa10") diff = b.psa10Price - a.psa10Price;
+        else if (sortBy === "raw") diff = b.rawPrice - a.rawPrice;
+        else diff = a.name.localeCompare(b.name);
+        return sortDir === "desc" ? diff : -diff;
       });
-  }, [cards, trendFilter, sortBy]);
-
-  const stats = useMemo(() => {
-    const withTrend = cards.filter(c => c.psa10Price > 0);
-    return {
-      up: withTrend.filter(c => c.psa10Trend === "up").length,
-      down: withTrend.filter(c => c.psa10Trend === "down").length,
-      stable: withTrend.filter(c => c.psa10Trend === "stable").length,
-      total: withTrend.length,
-    };
-  }, [cards]);
+  }, [cards, trendFilter, sortBy, sortDir, minRaw, maxRaw]);
 
   function cardUrl(tcgPlayerId: string) {
     return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/trending?" + searchParams.toString());
   }
 
+  function trendIcon(trend: string) {
+    if (trend === "up") return "📈";
+    if (trend === "down") return "📉";
+    return "➡️";
+  }
+
+  function trendColor(trend: string) {
+    if (trend === "up") return "text-emerald-400";
+    if (trend === "down") return "text-red-400";
+    return "text-zinc-400";
+  }
+
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/3 w-96 h-96 bg-emerald-400/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-yellow-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-emerald-400/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 left-1/4 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl" />
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
@@ -192,11 +162,12 @@ function TrendingInner() {
             <span className="text-white">TRENDING </span>
             <span className="text-emerald-400">CARDS</span>
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">PSA 10 price momentum and sales velocity — click card to view details · ☆ to watchlist</p>
+          <p className="text-zinc-500 text-sm mt-1">PSA 10 price movement by set — click card for full ROI · ☆ to watchlist</p>
         </div>
 
         {/* Controls */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
+
           <div className="flex-1 min-w-48">
             <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
             <select
@@ -213,19 +184,16 @@ function TrendingInner() {
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">TREND</label>
             <div className="flex gap-2">
-              {(["all", "up", "stable", "down"] as const).map((t) => (
+              {(["all", "up", "down", "stable"] as const).map((t) => (
                 <button
                   key={t}
-                  onClick={() => handleTrendChange(t)}
-                  className={"px-3 py-2.5 rounded-lg text-sm font-mono border transition-colors " +
+                  onClick={() => { setTrendFilter(t); updateUrl({ trend: t === "all" ? "" : t }); }}
+                  className={"px-3 py-2.5 rounded-lg border text-sm font-mono transition-colors " +
                     (trendFilter === t
-                      ? t === "up" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                        : t === "down" ? "bg-red-500/20 border-red-500/40 text-red-400"
-                        : t === "stable" ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-400"
-                        : "bg-zinc-700 border-zinc-600 text-white"
+                      ? "bg-zinc-700 border-zinc-500 text-white"
                       : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-white")}
                 >
-                  {t === "all" ? "All" : t === "up" ? "↑ Rising" : t === "down" ? "↓ Falling" : "→ Stable"}
+                  {t === "all" ? "All" : t === "up" ? "📈 Up" : t === "down" ? "📉 Down" : "➡️ Stable"}
                 </button>
               ))}
             </div>
@@ -233,39 +201,58 @@ function TrendingInner() {
 
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">SORT BY</label>
-            <select
-              value={sortBy}
-              onChange={(e) => handleSortChange(e.target.value as typeof sortBy)}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
-            >
-              <option value="volume">Daily Volume</option>
-              <option value="velocity">Weekly Sales</option>
-              <option value="price">7-Day Price</option>
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value as typeof sortBy); updateUrl({ sort: e.target.value }); }}
+                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
+              >
+                <option value="trend">Trend %</option>
+                <option value="psa10">PSA 10 Price</option>
+                <option value="raw">Raw Price</option>
+                <option value="name">Name</option>
+              </select>
+              <button
+                onClick={() => {
+                  const next = sortDir === "desc" ? "asc" : "desc";
+                  setSortDir(next);
+                  updateUrl({ dir: next });
+                }}
+                className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2.5 text-white text-sm transition-colors font-mono"
+              >
+                {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE ($)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={minRaw === NEG_INF ? "" : minRaw}
+                min={0}
+                placeholder="Min"
+                onChange={(e) => { const v = e.target.value === "" ? NEG_INF : parseFloat(e.target.value) || 0; setMinRaw(v); updateUrl({ min: v === NEG_INF ? "" : String(v) }); }}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+              <span className="text-zinc-600 text-sm font-mono">—</span>
+              <input
+                type="number"
+                value={maxRaw === POS_INF ? "" : maxRaw}
+                min={0}
+                placeholder="Max"
+                onChange={(e) => { const v = e.target.value === "" ? POS_INF : parseFloat(e.target.value) || POS_INF; setMaxRaw(v); updateUrl({ max: v === POS_INF ? "" : String(v) }); }}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+            </div>
           </div>
         </div>
-
-        {/* Stats bar */}
-        {cards.length > 0 && (
-          <div className="grid grid-cols-4 gap-3 mb-6">
-            {[
-              { label: "Total with PSA 10", value: stats.total, color: "text-white" },
-              { label: "↑ Rising", value: stats.up, color: "text-emerald-400" },
-              { label: "→ Stable", value: stats.stable, color: "text-yellow-400" },
-              { label: "↓ Falling", value: stats.down, color: "text-red-400" },
-            ].map((s) => (
-              <div key={s.label} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-center">
-                <p className={"text-2xl font-black font-mono " + s.color}>{s.value}</p>
-                <p className="text-xs text-zinc-600 mt-1">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        )}
 
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">📈</div>
-            <p className="text-zinc-500 font-mono text-sm">Fetching price trends...</p>
+            <p className="text-zinc-500 font-mono text-sm">Fetching trending data...</p>
           </div>
         )}
 
@@ -282,89 +269,69 @@ function TrendingInner() {
 
         {!loading && selectedSet && filtered.length === 0 && cards.length > 0 && (
           <div className="text-center py-20">
-            <p className="text-zinc-500 font-mono text-sm">No cards match this trend filter.</p>
+            <p className="text-zinc-500 font-mono text-sm">No cards match your current filters.</p>
           </div>
         )}
 
-        {/* Cards grid */}
         {filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filtered.map((card) => {
-              const trend = TREND_CONFIG[card.psa10Trend as keyof typeof TREND_CONFIG] ?? TREND_CONFIG.unknown;
-              const isWatched = watchedIds.has(card.tcgPlayerId);
-              return (
-                <div
-                  key={card.id}
-                  onClick={() => router.push(cardUrl(card.tcgPlayerId))}
-                  className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-2xl overflow-hidden transition-all cursor-pointer hover:scale-[1.02] hover:bg-zinc-800/60"
-                >
-                  <div className="relative">
-                    {card.image && (
-                      <img src={card.image} alt={card.name} className="w-full object-cover" />
-                    )}
-                    <div className={"absolute top-2 right-2 text-xs font-bold px-2 py-1 rounded-full border backdrop-blur-sm " + trend.bg + " " + trend.color}>
-                      {trend.label}
-                    </div>
+          <div>
+            <p className="text-xs text-zinc-600 font-mono mb-4">
+              {filtered.length} cards · {cards.filter(c => c.trend === "up").length} rising · {cards.filter(c => c.trend === "down").length} falling
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {filtered.map((card) => {
+                const watched = isWatched(card.tcgPlayerId);
+                return (
+                  <div
+                    key={card.id}
+                    onClick={() => router.push(cardUrl(card.tcgPlayerId))}
+                    className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 rounded-xl p-3 cursor-pointer transition-all hover:scale-[1.02]"
+                  >
+                    {/* Watchlist button */}
                     <button
                       onClick={(e) => toggleWatch(e, card)}
-                      title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
-                      className={"absolute top-2 left-2 w-8 h-8 flex items-center justify-center rounded-full text-base font-bold transition-all shadow-lg " +
-                        (isWatched
+                      className={"absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all z-10 " +
+                        (watched
                           ? "bg-blue-500 text-white hover:bg-red-500"
-                          : "bg-black/70 text-white hover:bg-blue-500 border border-white/20")}
+                          : "bg-zinc-800/80 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
                     >
-                      {isWatched ? "★" : "☆"}
+                      {watched ? "★" : "☆"}
                     </button>
-                  </div>
 
-                  <div className="p-4 space-y-3">
-                    <div>
-                      <p className="font-bold text-white text-sm leading-tight">{card.name}</p>
-                      <p className="text-xs text-zinc-600 mt-0.5">{card.rarity} · #{card.number}</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-zinc-800/50 rounded-lg p-2">
-                        <p className="text-xs text-zinc-600 font-mono">Raw</p>
-                        <p className="text-sm font-black text-white font-mono">${card.rawPrice.toFixed(2)}</p>
-                      </div>
-                      <div className="bg-yellow-400/5 border border-yellow-400/10 rounded-lg p-2">
-                        <p className="text-xs text-yellow-400/60 font-mono">PSA 10</p>
-                        <p className="text-sm font-black text-yellow-400 font-mono">${card.psa10Price.toFixed(2)}</p>
-                      </div>
-                    </div>
-
-                    {card.psa10MarketPrice7Day > 0 && (
-                      <div className="bg-zinc-800/30 rounded-lg px-3 py-2 flex justify-between items-center">
-                        <span className="text-xs text-zinc-500 font-mono">7-day market</span>
-                        <span className="text-xs font-bold font-mono text-white">${card.psa10MarketPrice7Day.toFixed(2)}</span>
-                      </div>
+                    {card.image && (
+                      <img
+                        src={card.image}
+                        alt={card.name}
+                        className="w-full rounded-lg mb-2 group-hover:scale-[1.03] transition-transform"
+                      />
                     )}
 
-                    <div className="flex justify-between items-center">
-                      <div className="text-center">
-                        <p className="text-xs text-zinc-600 font-mono">Daily</p>
-                        <p className="text-sm font-black text-white font-mono">{card.salesVelocityDaily.toFixed(1)}</p>
+                    <p className="text-sm font-semibold text-white truncate pr-8">{card.name}</p>
+                    <p className="text-xs text-zinc-600 truncate">{card.rarity} · #{card.number}</p>
+
+                    <div className="flex items-center justify-between mt-2">
+                      <div>
+                        <p className="text-xs text-zinc-600 font-mono">PSA 10</p>
+                        <p className="text-sm font-black text-yellow-400 font-mono">
+                          {card.psa10Price > 0 ? "$" + card.psa10Price.toFixed(2) : "N/A"}
+                        </p>
                       </div>
-                      <div className="text-center">
-                        <p className="text-xs text-zinc-600 font-mono">Weekly</p>
-                        <p className="text-sm font-black text-white font-mono">{card.salesVelocityWeekly.toFixed(1)}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-zinc-600 font-mono">7d vol</p>
-                        <p className={"text-sm font-black font-mono " + (card.psa10Volume7Day > 0 ? "text-emerald-400" : "text-zinc-600")}>
-                          {card.psa10Volume7Day > 0 ? card.psa10Volume7Day.toFixed(2) : "—"}
+                      <div className="text-right">
+                        <p className="text-xs text-zinc-600 font-mono">Trend</p>
+                        <p className={"text-sm font-black font-mono " + trendColor(card.trend)}>
+                          {trendIcon(card.trend)} {card.trendPct !== 0 ? (card.trendPct > 0 ? "+" : "") + card.trendPct.toFixed(1) + "%" : card.trend}
                         </p>
                       </div>
                     </div>
 
-                    <div className="text-center pt-1">
-                      <span className="text-xs text-zinc-700 font-mono">Click to view full ROI →</span>
-                    </div>
+                    {card.rawPrice > 0 && (
+                      <p className="text-xs text-zinc-600 font-mono mt-1">Raw: ${card.rawPrice.toFixed(2)}</p>
+                    )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

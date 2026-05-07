@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CardData } from "@/lib/types";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
-import { addToWatchlist, removeFromWatchlist, isInWatchlist } from "@/lib/watchlist";
+import { useWatchlist } from "@/lib/watchlist-context";
 import Link from "next/link";
 
 function calcProfit(card: CardData, fees: ReturnType<typeof useFees>["fees"]) {
@@ -35,6 +35,7 @@ const POS_INF = 999999;
 
 function LeaderboardInner() {
   const { fees } = useFees();
+  const { items: watchlistItems, addItem, removeItem, isWatched } = useWatchlist();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -53,7 +54,6 @@ function LeaderboardInner() {
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || POS_INF);
   const [minRoi, setMinRoi] = useState(parseFloat(searchParams.get("minRoi") ?? "") || NEG_INF);
   const [maxRoi, setMaxRoi] = useState(parseFloat(searchParams.get("maxRoi") ?? "") || POS_INF);
-  const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [showAll, setShowAll] = useState(false);
 
   function updateUrl(params: Record<string, string>) {
@@ -65,7 +65,6 @@ function LeaderboardInner() {
     router.replace("/leaderboard?" + current.toString(), { scroll: false });
   }
 
-  // Load sets list on mount
   useEffect(() => {
     fetch("/api/sets")
       .then((r) => r.json())
@@ -77,7 +76,6 @@ function LeaderboardInner() {
       .catch(() => setSetsLoading(false));
   }, []);
 
-  // Only auto-fetch if coming back from a card page (set is in URL)
   useEffect(() => {
     const fromUrl = searchParams.get("set");
     if (fromUrl) {
@@ -98,11 +96,6 @@ function LeaderboardInner() {
       const raw = json.data ?? [];
       const mapped = raw.map(mapApiCard);
       setCards(mapped);
-      const watched = new Set<string>();
-      mapped.forEach((c: CardData) => {
-        if (isInWatchlist(c.tcgPlayerId)) watched.add(c.tcgPlayerId);
-      });
-      setWatchedIds(watched);
     } catch {
       setError("Failed to fetch set data.");
     } finally {
@@ -172,13 +165,12 @@ function LeaderboardInner() {
     updateUrl({ rarity: "", min: "1", max: "", minRoi: "", maxRoi: "" });
   }
 
-  function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
+  async function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
     e.stopPropagation();
-    if (watchedIds.has(card.tcgPlayerId)) {
-      removeFromWatchlist(card.tcgPlayerId);
-      setWatchedIds(prev => { const next = new Set(prev); next.delete(card.tcgPlayerId); return next; });
+    if (isWatched(card.tcgPlayerId)) {
+      await removeItem(card.tcgPlayerId);
     } else {
-      addToWatchlist({
+      await addItem({
         tcgPlayerId: card.tcgPlayerId,
         name: card.name,
         set: card.set,
@@ -190,7 +182,6 @@ function LeaderboardInner() {
         number: card.number,
         addedAt: new Date().toISOString(),
       });
-      setWatchedIds(prev => new Set(prev).add(card.tcgPlayerId));
     }
   }
 
@@ -474,7 +465,7 @@ function LeaderboardInner() {
         {!loading && !selectedSet && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏆</div>
-            <p className="text-zinc-500 font-mono text-sm mb-2">Select a set above to see the top ROI cards</p>
+            <p className="text-zinc-600 font-mono text-sm mb-2">Select a set above to see the top ROI cards</p>
             <p className="text-zinc-700 text-xs">Cards are loaded on demand to conserve API credits</p>
           </div>
         )}
@@ -517,7 +508,7 @@ function LeaderboardInner() {
                     {visibleCards.map((card, idx) => {
                       const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
                       const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
-                      const isWatched = watchedIds.has(card.tcgPlayerId);
+                      const watched = isWatched(card.tcgPlayerId);
                       return (
                         <tr
                           key={card.id}
@@ -528,12 +519,12 @@ function LeaderboardInner() {
                           <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
                             <button
                               className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
-                                (isWatched
+                                (watched
                                   ? "bg-blue-500 text-white hover:bg-red-500"
                                   : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
-                              title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
+                              title={watched ? "Remove from watchlist" : "Add to watchlist"}
                             >
-                              {isWatched ? "★" : "☆"}
+                              {watched ? "★" : "☆"}
                             </button>
                           </td>
                           <td className="px-4 py-3">
