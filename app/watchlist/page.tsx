@@ -19,7 +19,7 @@ function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFee
 export default function Watchlist() {
   const { items, loading: syncing, removeItem, reload } = useWatchlist();
   const [mounted, setMounted] = useState(false);
-  const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("added");
+  const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("roi");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
