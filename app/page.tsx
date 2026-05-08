@@ -20,10 +20,10 @@ function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFee
 
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-      <p className="text-xs text-zinc-500 font-mono mb-1">{label}</p>
+    <div className="bg-zinc-900/60 border border-zinc-700 rounded-xl p-4">
+      <p className="text-sm text-zinc-400 font-semibold mb-1">{label}</p>
       <p className={"text-2xl font-black font-mono " + (color ?? "text-white")}>{value}</p>
-      {sub && <p className="text-xs text-zinc-600 mt-1">{sub}</p>}
+      {sub && <p className="text-sm text-zinc-400 mt-1">{sub}</p>}
     </div>
   );
 }
@@ -109,11 +109,11 @@ function HomeInner() {
 
         {/* Hero */}
         <div className="text-center mb-10">
-          <h1 className="text-5xl md:text-7xl font-black mb-3 tracking-tight" style={{ letterSpacing: "0.02em" }}>
+          <h1 className="text-5xl md:text-7xl font-black mb-3 tracking-tight">
             <span className="text-white">POKE</span>
             <span className="text-yellow-400">ROI</span>
           </h1>
-          <p className="text-zinc-400 text-lg max-w-md mx-auto">
+          <p className="text-zinc-300 text-xl max-w-md mx-auto font-medium">
             Your Pokémon card grading command center
           </p>
         </div>
@@ -132,7 +132,7 @@ function HomeInner() {
         />
 
         {error && (
-          <div className="mt-4 text-center text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+          <div className="mt-4 text-center text-red-400 text-base bg-red-500/10 border border-red-500/20 rounded-lg p-3 font-semibold">
             {error}
           </div>
         )}
@@ -141,10 +141,10 @@ function HomeInner() {
         {results.length > 0 && (
           <div className="mt-6">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-zinc-500 text-sm font-mono">{results.length} cards found — click to view ROI</p>
+              <p className="text-zinc-300 text-base font-semibold">{results.length} cards found — click to view ROI</p>
               <button
                 onClick={() => { setResults([]); router.replace("/", { scroll: false }); }}
-                className="text-xs text-zinc-600 hover:text-zinc-400 font-mono transition-colors"
+                className="text-sm text-zinc-400 hover:text-zinc-200 font-semibold transition-colors"
               >
                 Clear ✕
               </button>
@@ -155,9 +155,8 @@ function HomeInner() {
                 return (
                   <div
                     key={card.id + "-" + idx}
-                    className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-yellow-400/40 rounded-xl p-3 transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
+                    className="group relative bg-zinc-900/60 border border-zinc-700 hover:border-yellow-400/40 rounded-xl p-3 transition-all duration-200 hover:bg-zinc-800/60 hover:scale-[1.02]"
                   >
-                    {/* Watchlist star */}
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
@@ -178,22 +177,21 @@ function HomeInner() {
                           });
                         }
                       }}
-                      className={"absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all z-10 " +
+                      className={"absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold transition-all z-10 " +
                         (watched
                           ? "bg-blue-500 text-white hover:bg-red-500"
-                          : "bg-zinc-800/80 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
+                          : "bg-zinc-800/80 text-zinc-400 hover:bg-blue-500 hover:text-white border border-zinc-600")}
                     >
                       {watched ? "★" : "☆"}
                     </button>
 
-                    {/* Card content */}
                     <div onClick={() => router.push(cardUrl(card.tcgPlayerId))} className="cursor-pointer">
                       {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2" />}
-                      <p className="text-sm font-semibold text-white truncate pr-8">{card.name}</p>
-                      <p className="text-xs text-zinc-500 truncate">{card.set}</p>
-                      {card.rawPrice > 0 && <p className="text-xs text-yellow-400 mt-1 font-mono">${card.rawPrice.toFixed(2)}</p>}
+                      <p className="text-sm font-bold text-white truncate pr-8">{card.name}</p>
+                      <p className="text-xs text-zinc-400 truncate font-medium">{card.set}</p>
+                      {card.rawPrice > 0 && <p className="text-sm text-yellow-400 mt-1 font-bold font-mono">${card.rawPrice.toFixed(2)}</p>}
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl pointer-events-none">
-                        <span className="text-xs text-white font-mono bg-yellow-400/20 border border-yellow-400/30 px-2 py-1 rounded-lg">
+                        <span className="text-sm text-white font-bold bg-yellow-400/20 border border-yellow-400/30 px-3 py-1.5 rounded-lg">
                           View ROI →
                         </span>
                       </div>
@@ -220,11 +218,11 @@ function HomeInner() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors group"
+                  className="bg-zinc-900/60 border border-zinc-700 hover:border-zinc-500 rounded-xl p-4 transition-colors group"
                 >
                   <div className="text-2xl mb-2">{item.icon}</div>
-                  <p className="text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">{item.label}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">{item.sub}</p>
+                  <p className="text-base font-bold text-white group-hover:text-yellow-400 transition-colors">{item.label}</p>
+                  <p className="text-sm text-zinc-400 mt-0.5 font-medium">{item.sub}</p>
                 </Link>
               ))}
             </div>
@@ -233,7 +231,7 @@ function HomeInner() {
             {watchlistLoading && (
               <div className="text-center py-8">
                 <div className="text-2xl mb-2 animate-spin inline-block">⟳</div>
-                <p className="text-zinc-500 font-mono text-sm">Loading your watchlist...</p>
+                <p className="text-zinc-400 font-semibold text-base">Loading your watchlist...</p>
               </div>
             )}
 
@@ -241,21 +239,21 @@ function HomeInner() {
             {!watchlistLoading && watchlist.length > 0 && watchlistStats && (
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-black text-white">Watchlist Summary</h2>
-                  <Link href="/watchlist" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                  <h2 className="text-xl font-black text-white">Watchlist Summary</h2>
+                  <Link href="/watchlist" className="text-sm text-zinc-400 hover:text-white font-semibold transition-colors">
                     View all {watchlist.length} cards →
                   </Link>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                  <StatCard label="Cards watching" value={String(watchlist.length)} />
+                  <StatCard label="Cards Watching" value={String(watchlist.length)} />
                   <StatCard
-                    label="Profitable to grade"
+                    label="Profitable to Grade"
                     value={String(watchlistStats.profitable.length)}
                     sub={((watchlistStats.profitable.length / watchlist.length) * 100).toFixed(0) + "% of watchlist"}
                     color="text-emerald-400"
                   />
                   <StatCard
-                    label="Total potential profit"
+                    label="Total Potential Profit"
                     value={(watchlistStats.totalProfit >= 0 ? "+" : "") + "$" + watchlistStats.totalProfit.toFixed(0)}
                     color={watchlistStats.totalProfit >= 0 ? "text-emerald-400" : "text-red-400"}
                   />
@@ -267,9 +265,9 @@ function HomeInner() {
                 </div>
 
                 {topOpportunities.length > 0 && (
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
-                    <div className="px-4 py-3 border-b border-zinc-800">
-                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Top Opportunities in Watchlist</p>
+                  <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-700">
+                      <p className="text-sm text-zinc-300 font-bold uppercase tracking-widest">Top Opportunities in Watchlist</p>
                     </div>
                     <div className="divide-y divide-zinc-800/50">
                       {topOpportunities.map((card, idx) => {
@@ -280,17 +278,17 @@ function HomeInner() {
                             onClick={() => router.push("/card/" + card.tcgPlayerId + "?from=" + encodeURIComponent("/watchlist"))}
                             className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                           >
-                            <span className="text-zinc-600 font-mono text-sm w-4">{idx + 1}</span>
-                            {card.image && <img src={card.image} alt={card.name} className="w-8 rounded flex-shrink-0" />}
+                            <span className="text-zinc-400 font-bold text-sm w-5">{idx + 1}</span>
+                            {card.image && <img src={card.image} alt={card.name} className="w-10 rounded flex-shrink-0" />}
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-white truncate">{card.name}</p>
-                              <p className="text-xs text-zinc-600 truncate">{card.set}</p>
+                              <p className="text-base font-bold text-white truncate">{card.name}</p>
+                              <p className="text-sm text-zinc-400 truncate font-medium">{card.set}</p>
                             </div>
                             <div className="text-right flex-shrink-0">
-                              <p className={"text-sm font-black font-mono " + roiColor}>
+                              <p className={"text-base font-black font-mono " + roiColor}>
                                 {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
                               </p>
-                              <p className={"text-xs font-mono " + roiColor}>
+                              <p className={"text-sm font-semibold font-mono " + roiColor}>
                                 {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
                               </p>
                             </div>
@@ -307,26 +305,26 @@ function HomeInner() {
             {submissions.length > 0 && submissionStats && (
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-black text-white">Submissions</h2>
-                  <Link href="/submissions" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                  <h2 className="text-xl font-black text-white">Submissions</h2>
+                  <Link href="/submissions" className="text-sm text-zinc-400 hover:text-white font-semibold transition-colors">
                     View all →
                   </Link>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                  <StatCard label="Total submitted" value={String(submissions.length)} />
-                  <StatCard label="In progress" value={String(submissionStats.active.length)} color="text-orange-400" />
-                  <StatCard label="Capital at risk" value={"$" + submissionStats.totalInvested.toFixed(0)} color="text-yellow-400" />
+                  <StatCard label="Total Submitted" value={String(submissions.length)} />
+                  <StatCard label="In Progress" value={String(submissionStats.active.length)} color="text-orange-400" />
+                  <StatCard label="Capital at Risk" value={"$" + submissionStats.totalInvested.toFixed(0)} color="text-yellow-400" />
                   <StatCard
-                    label="Realized profit"
+                    label="Realized Profit"
                     value={(submissionStats.realizedProfit >= 0 ? "+" : "") + "$" + submissionStats.realizedProfit.toFixed(0)}
                     color={submissionStats.realizedProfit >= 0 ? "text-emerald-400" : "text-red-400"}
                   />
                 </div>
 
                 {submissionStats.active.length > 0 && (
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
-                    <div className="px-4 py-3 border-b border-zinc-800">
-                      <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Active Submissions</p>
+                  <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-700">
+                      <p className="text-sm text-zinc-300 font-bold uppercase tracking-widest">Active Submissions</p>
                     </div>
                     <div className="divide-y divide-zinc-800/50">
                       {submissionStats.active.slice(0, 5).map((sub) => (
@@ -335,20 +333,20 @@ function HomeInner() {
                           onClick={() => router.push("/submissions")}
                           className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                         >
-                          {sub.image && <img src={sub.image} alt={sub.name} className="w-8 rounded flex-shrink-0" />}
+                          {sub.image && <img src={sub.image} alt={sub.name} className="w-10 rounded flex-shrink-0" />}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white truncate">{sub.name}</p>
-                            <p className="text-xs text-zinc-600 truncate">{sub.set}</p>
+                            <p className="text-base font-bold text-white truncate">{sub.name}</p>
+                            <p className="text-sm text-zinc-400 truncate font-medium">{sub.set}</p>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="text-xs font-mono text-zinc-400">{STATUS_LABELS[sub.status]}</p>
-                            <p className="text-xs font-mono text-zinc-600">${(sub.rawPrice + sub.gradingFee + sub.shippingCost).toFixed(2)} invested</p>
+                            <p className="text-sm font-semibold text-zinc-300">{STATUS_LABELS[sub.status]}</p>
+                            <p className="text-sm font-mono text-zinc-400">${(sub.rawPrice + sub.gradingFee + sub.shippingCost).toFixed(2)} invested</p>
                           </div>
                         </div>
                       ))}
                       {submissionStats.active.length > 5 && (
                         <div className="px-4 py-3 text-center">
-                          <Link href="/submissions" className="text-xs text-zinc-500 hover:text-white font-mono transition-colors">
+                          <Link href="/submissions" className="text-sm text-zinc-400 hover:text-white font-semibold transition-colors">
                             +{submissionStats.active.length - 5} more →
                           </Link>
                         </div>
@@ -363,15 +361,15 @@ function HomeInner() {
             {!watchlistLoading && watchlist.length === 0 && submissions.length === 0 && (
               <div className="text-center py-10">
                 <div className="text-5xl mb-4">⚡</div>
-                <p className="text-zinc-500 font-mono text-sm mb-2">Welcome to PokeROI</p>
-                <p className="text-zinc-700 text-xs mb-6 max-w-sm mx-auto">
+                <p className="text-zinc-300 font-bold text-lg mb-2">Welcome to PokeROI</p>
+                <p className="text-zinc-500 text-base mb-6 max-w-sm mx-auto">
                   Search for a card above to get started, or browse the Top ROI leaderboard to find grading opportunities
                 </p>
                 <div className="flex gap-3 justify-center flex-wrap">
-                  <Link href="/leaderboard" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
+                  <Link href="/leaderboard" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-base">
                     🏆 Browse Top ROI
                   </Link>
-                  <Link href="/trending" className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
+                  <Link href="/trending" className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white font-bold px-5 py-2.5 rounded-lg transition-colors text-base">
                     📈 See Trending Cards
                   </Link>
                 </div>
@@ -388,7 +386,7 @@ export default function Home() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <div className="text-zinc-500 font-mono text-sm">Loading...</div>
+        <div className="text-zinc-300 font-semibold text-base">Loading...</div>
       </div>
     }>
       <HomeInner />
