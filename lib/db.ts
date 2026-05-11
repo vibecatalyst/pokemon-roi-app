@@ -1,5 +1,6 @@
-export async function dbGetWatchlist() {
-  const res = await fetch("/api/db/watchlist");
+export async function dbGetWatchlist(watchlistId?: string) {
+  const url = watchlistId ? "/api/db/watchlist?watchlist_id=" + watchlistId : "/api/db/watchlist";
+  const res = await fetch(url);
   if (!res.ok) return null;
   const json = await res.json();
   return json.data;
@@ -14,11 +15,38 @@ export async function dbAddToWatchlist(item: Record<string, unknown>) {
   return res.ok;
 }
 
-export async function dbRemoveFromWatchlist(tcgPlayerId: string) {
+export async function dbRemoveFromWatchlist(tcgPlayerId: string, watchlistId?: string) {
   const res = await fetch("/api/db/watchlist", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tcgPlayerId }),
+    body: JSON.stringify({ tcgPlayerId, watchlistId }),
+  });
+  return res.ok;
+}
+
+export async function dbGetWatchlists() {
+  const res = await fetch("/api/db/watchlists");
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function dbCreateWatchlist(name: string) {
+  const res = await fetch("/api/db/watchlists", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function dbDeleteWatchlist(id: string) {
+  const res = await fetch("/api/db/watchlists", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
   });
   return res.ok;
 }

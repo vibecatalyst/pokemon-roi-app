@@ -3,27 +3,43 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { WatchlistItem, getWatchlist, addToWatchlist as localAdd, removeFromWatchlist as localRemove } from "@/lib/watchlist";
-import { dbGetWatchlist, dbAddToWatchlist, dbRemoveFromWatchlist } from "@/lib/db";
+import { dbGetWatchlist, dbAddToWatchlist, dbRemoveFromWatchlist, dbGetWatchlists, dbCreateWatchlist, dbDeleteWatchlist } from "@/lib/db";
+
+export interface WatchlistList {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface WatchlistItemWithList extends WatchlistItem {
+  watchlistId?: string;
+}
 
 interface WatchlistContextType {
-  items: WatchlistItem[];
+  items: WatchlistItemWithList[];
+  lists: WatchlistList[];
   loading: boolean;
-  addItem: (item: WatchlistItem) => Promise<void>;
-  removeItem: (tcgPlayerId: string) => Promise<void>;
-  isWatched: (tcgPlayerId: string) => boolean;
+  addItem: (item: WatchlistItem, watchlistId?: string) => Promise<void>;
+  removeItem: (tcgPlayerId: string, watchlistId?: string) => Promise<void>;
+  isWatched: (tcgPlayerId: string, watchlistId?: string) => boolean;
+  createList: (name: string) => Promise<WatchlistList | null>;
+  deleteList: (id: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
 const WatchlistContext = createContext<WatchlistContextType>({
   items: [],
+  lists: [],
   loading: false,
   addItem: async () => {},
   removeItem: async () => {},
   isWatched: () => false,
+  createList: async () => null,
+  deleteList: async () => {},
   reload: async () => {},
 });
 
-function mapDbItem(row: Record<string, unknown>): WatchlistItem {
+function mapDbItem(row: Record<string, unknown>): WatchlistItemWithList {
   return {
     tcgPlayerId: String(row.tcg_player_id ?? ""),
     name: String(row.name ?? ""),
@@ -35,12 +51,14 @@ function mapDbItem(row: Record<string, unknown>): WatchlistItem {
     rarity: String(row.rarity ?? ""),
     number: String(row.number ?? ""),
     addedAt: String(row.added_at ?? new Date().toISOString()),
+    watchlistId: row.watchlist_id ? String(row.watchlist_id) : undefined,
   };
 }
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
   const { isSignedIn } = useAuth();
-  const [items, setItems] = useState<WatchlistItem[]>([]);
+  const [items, setItems] = useState<WatchlistItemWithList[]>([]);
+  const [lists, setLists] = useState<WatchlistList[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -51,21 +69,25 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       if (isSignedIn) {
-        const data = await dbGetWatchlist();
-        if (data) {
-          setItems(data.map(mapDbItem));
-          return;
-        }
+        const [itemData, listData] = await Promise.all([
+          dbGetWatchlist(),
+          dbGetWatchlists(),
+        ]);
+        if (itemData) setItems(itemData.map(mapDbItem));
+        if (listData) setLists(listData);
+        return;
       }
       setItems(getWatchlist());
+      setLists([]);
     } catch {
       setItems(getWatchlist());
+      setLists([]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function addItem(item: WatchlistItem) {
+  async function addItem(item: WatchlistItem, watchlistId?: string) {
     if (isSignedIn) {
       await dbAddToWatchlist({
         tcgPlayerId: item.tcgPlayerId,
@@ -78,6 +100,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
         rarity: item.rarity,
         number: item.number,
         addedAt: item.addedAt,
+        watchlistId: watchlistId ?? null,
       });
       await reload();
     } else {
@@ -86,9 +109,9 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function removeItem(tcgPlayerId: string) {
+  async function removeItem(tcgPlayerId: string, watchlistId?: string) {
     if (isSignedIn) {
-      await dbRemoveFromWatchlist(tcgPlayerId);
+      await dbRemoveFromWatchlist(tcgPlayerId, watchlistId);
       await reload();
     } else {
       localRemove(tcgPlayerId);
@@ -96,12 +119,30 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function isWatched(tcgPlayerId: string) {
+  function isWatched(tcgPlayerId: string, watchlistId?: string) {
+    if (watchlistId) {
+      return items.some(i => i.tcgPlayerId === tcgPlayerId && i.watchlistId === watchlistId);
+    }
     return items.some(i => i.tcgPlayerId === tcgPlayerId);
   }
 
+  async function createList(name: string) {
+    const newList = await dbCreateWatchlist(name);
+    if (newList) {
+      setLists(prev => [...prev, newList]);
+      return newList;
+    }
+    return null;
+  }
+
+  async function deleteList(id: string) {
+    await dbDeleteWatchlist(id);
+    setLists(prev => prev.filter(l => l.id !== id));
+    setItems(prev => prev.filter(i => i.watchlistId !== id));
+  }
+
   return (
-    <WatchlistContext.Provider value={{ items, loading, addItem, removeItem, isWatched, reload }}>
+    <WatchlistContext.Provider value={{ items, lists, loading, addItem, removeItem, isWatched, createList, deleteList, reload }}>
       {children}
     </WatchlistContext.Provider>
   );

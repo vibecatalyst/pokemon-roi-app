@@ -7,6 +7,7 @@ import { useFees } from "@/lib/fees-context";
 import { useWatchlist } from "@/lib/watchlist-context";
 import { useSubmissions } from "@/lib/submissions-context";
 import { Submission } from "@/lib/submissions";
+import WatchlistPicker from "@/components/WatchlistPicker";
 import PriceChart from "@/components/PriceChart";
 import CardResult from "@/components/CardResult";
 
@@ -144,7 +145,7 @@ function CardDetailInner() {
   const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
   const fromUrl = searchParams.get("from") ?? "/";
   const { fees } = useFees();
-  const { addItem, removeItem, isWatched } = useWatchlist();
+  const { isWatched, removeItem } = useWatchlist();
   const { addItem: addSubmissionItem } = useSubmissions();
   const watched = isWatched(id);
 
@@ -153,6 +154,7 @@ function CardDetailInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showWatchlistPicker, setShowWatchlistPicker] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
@@ -177,18 +179,7 @@ function CardDetailInner() {
     if (watched) {
       await removeItem(card.tcgPlayerId);
     } else {
-      await addItem({
-        tcgPlayerId: card.tcgPlayerId,
-        name: card.name,
-        set: card.set,
-        image: card.image,
-        rawPrice: card.rawPrice,
-        psa10Price: card.psa10Price,
-        psa9Price: card.psa9Price ?? 0,
-        rarity: card.rarity,
-        number: card.number,
-        addedAt: new Date().toISOString(),
-      });
+      setShowWatchlistPicker(true);
     }
   }
 
@@ -220,6 +211,24 @@ function CardDetailInner() {
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
+      {showWatchlistPicker && card && (
+        <WatchlistPicker
+          card={{
+            tcgPlayerId: card.tcgPlayerId,
+            name: card.name,
+            set: card.set,
+            image: card.image,
+            rawPrice: card.rawPrice,
+            psa10Price: card.psa10Price,
+            psa9Price: card.psa9Price ?? 0,
+            rarity: card.rarity,
+            number: card.number,
+            addedAt: new Date().toISOString(),
+          }}
+          onClose={() => setShowWatchlistPicker(false)}
+        />
+      )}
+
       {showSubmitModal && card && (
         <SubmitModal
           card={card}
@@ -239,7 +248,7 @@ function CardDetailInner() {
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <button
             onClick={() => router.push(fromUrl)}
-            className="text-zinc-500 hover:text-white text-sm transition-colors"
+            className="text-zinc-400 hover:text-white text-sm font-semibold transition-colors"
           >
             {getBackLabel()}
           </button>
@@ -254,7 +263,7 @@ function CardDetailInner() {
             {card && (
               <button
                 onClick={openPsaPop}
-                className="text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
+                className="text-sm px-3 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-400 transition-colors font-semibold"
               >
                 PSA Pop
               </button>
@@ -263,7 +272,7 @@ function CardDetailInner() {
             {card && (
               <button
                 onClick={openTcgPlayer}
-                className="text-sm px-3 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors font-mono"
+                className="text-sm px-3 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-400 transition-colors font-semibold"
               >
                 TCGPlayer
               </button>
@@ -272,7 +281,7 @@ function CardDetailInner() {
             {card && (
               <button
                 onClick={() => setShowSubmitModal(true)}
-                className="text-sm px-3 py-2 rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-400 hover:border-orange-500/50 transition-colors font-mono"
+                className="text-sm px-3 py-2 rounded-lg border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:border-orange-500/60 transition-colors font-semibold"
               >
                 + Submit to PSA
               </button>
@@ -281,10 +290,10 @@ function CardDetailInner() {
             {card && (
               <button
                 onClick={toggleWatchlist}
-                className={"px-4 py-2 rounded-lg border text-sm font-mono transition-colors " +
+                className={"px-4 py-2 rounded-lg border text-sm font-semibold transition-colors " +
                   (watched
-                    ? "bg-blue-500/20 border-blue-500/40 text-blue-400"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-blue-500/40 hover:text-blue-400")}
+                    ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
+                    : "bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-blue-500/40 hover:text-blue-300")}
               >
                 {watched ? "★ Watching" : "☆ Watchlist"}
               </button>
@@ -295,12 +304,12 @@ function CardDetailInner() {
         {loading && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4 animate-spin inline-block">⚡</div>
-            <p className="text-zinc-500 font-mono text-sm">Loading card data...</p>
+            <p className="text-zinc-400 font-semibold text-sm">Loading card data...</p>
           </div>
         )}
 
         {error && (
-          <div className="mt-4 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+          <div className="mt-4 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4 font-semibold">
             {error}
           </div>
         )}
@@ -320,7 +329,7 @@ export default function CardDetail() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <div className="text-zinc-500 font-mono text-sm">Loading...</div>
+        <div className="text-zinc-400 font-semibold text-sm">Loading...</div>
       </div>
     }>
       <CardDetailInner />

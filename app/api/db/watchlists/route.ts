@@ -2,18 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const { isAuthenticated, userId } = await auth();
   if (!isAuthenticated || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { searchParams } = new URL(req.url);
-  const watchlistId = searchParams.get("watchlist_id");
-  let query = supabase
-    .from("watchlist")
+  const { data, error } = await supabase
+    .from("watchlists")
     .select("*")
     .eq("user_id", userId)
-    .order("added_at", { ascending: false });
-  if (watchlistId) query = query.eq("watchlist_id", watchlistId);
-  const { data, error } = await query;
+    .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
 }
@@ -21,21 +17,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { isAuthenticated, userId } = await auth();
   if (!isAuthenticated || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json();
-  const { data, error } = await supabase.from("watchlist").upsert({
-    user_id: userId,
-    tcg_player_id: body.tcgPlayerId,
-    name: body.name,
-    set_name: body.set,
-    image: body.image,
-    raw_price: body.rawPrice,
-    psa10_price: body.psa10Price,
-    psa9_price: body.psa9Price,
-    rarity: body.rarity,
-    number: body.number,
-    added_at: body.addedAt,
-    watchlist_id: body.watchlistId ?? null,
-  }, { onConflict: "user_id,tcg_player_id,watchlist_id" });
+  const { name } = await req.json();
+  const { data, error } = await supabase
+    .from("watchlists")
+    .insert({ user_id: userId, name })
+    .select()
+    .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
 }
@@ -43,14 +30,12 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const { isAuthenticated, userId } = await auth();
   if (!isAuthenticated || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { tcgPlayerId, watchlistId } = await req.json();
-  let query = supabase
-    .from("watchlist")
+  const { id } = await req.json();
+  const { error } = await supabase
+    .from("watchlists")
     .delete()
     .eq("user_id", userId)
-    .eq("tcg_player_id", tcgPlayerId);
-  if (watchlistId) query = query.eq("watchlist_id", watchlistId);
-  const { error } = await query;
+    .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
