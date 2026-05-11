@@ -104,12 +104,24 @@ export default function Watchlist() {
     }
 
     for (const item of updated) {
-      await fetch("/api/db/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...item, watchlistId: item.watchlistId }),
-      });
-    }
+  await fetch("/api/db/watchlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tcgPlayerId: item.tcgPlayerId,
+      name: item.name,
+      set: item.set,
+      image: item.image,
+      rawPrice: item.rawPrice,
+      psa10Price: item.psa10Price,
+      psa9Price: item.psa9Price,
+      rarity: item.rarity,
+      number: item.number,
+      addedAt: item.addedAt,
+      watchlistId: item.watchlistId ?? null,
+    }),
+  });
+}
 
     await reload();
     setRefreshing(false);
