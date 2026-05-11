@@ -33,6 +33,7 @@ export default function Watchlist() {
   const [creatingList, setCreatingList] = useState(false);
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [editingListName, setEditingListName] = useState("");
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const { fees } = useFees();
   const router = useRouter();
 
@@ -46,8 +47,7 @@ export default function Watchlist() {
   }, [items, activeListId]);
 
   async function handleRemove(tcgPlayerId: string) {
-    const watchlistId = activeListId ?? undefined;
-    await removeItem(tcgPlayerId, watchlistId);
+    await removeItem(tcgPlayerId, activeListId ?? undefined);
   }
 
   async function handleDeleteList(id: string) {
@@ -104,24 +104,24 @@ export default function Watchlist() {
     }
 
     for (const item of updated) {
-  await fetch("/api/db/watchlist", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      tcgPlayerId: item.tcgPlayerId,
-      name: item.name,
-      set: item.set,
-      image: item.image,
-      rawPrice: item.rawPrice,
-      psa10Price: item.psa10Price,
-      psa9Price: item.psa9Price,
-      rarity: item.rarity,
-      number: item.number,
-      addedAt: item.addedAt,
-      watchlistId: item.watchlistId ?? null,
-    }),
-  });
-}
+      await fetch("/api/db/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tcgPlayerId: item.tcgPlayerId,
+          name: item.name,
+          set: item.set,
+          image: item.image,
+          rawPrice: item.rawPrice,
+          psa10Price: item.psa10Price,
+          psa9Price: item.psa9Price,
+          rarity: item.rarity,
+          number: item.number,
+          addedAt: item.addedAt,
+          watchlistId: item.watchlistId ?? null,
+        }),
+      });
+    }
 
     await reload();
     setRefreshing(false);
@@ -189,10 +189,7 @@ export default function Watchlist() {
     );
   }
 
-  const activeListName = activeListId === null
-    ? "Main Watchlist"
-    : lists.find(l => l.id === activeListId)?.name ?? "Unknown";
-
+  const activeListName = activeListId === null ? "Main Watchlist" : lists.find(l => l.id === activeListId)?.name ?? "Unknown";
   const mainCount = items.filter(i => !i.watchlistId).length;
 
   if (!mounted) return null;
@@ -207,17 +204,7 @@ export default function Watchlist() {
 
       {showAddPicker && (
         <WatchlistPicker
-          card={{
-            tcgPlayerId: "",
-            name: "",
-            set: "",
-            rawPrice: 0,
-            psa10Price: 0,
-            psa9Price: 0,
-            rarity: "",
-            number: "",
-            addedAt: new Date().toISOString(),
-          }}
+          card={{ tcgPlayerId: "", name: "", set: "", rawPrice: 0, psa10Price: 0, psa9Price: 0, rarity: "", number: "", addedAt: new Date().toISOString() }}
           onClose={() => setShowAddPicker(false)}
         />
       )}
@@ -230,18 +217,8 @@ export default function Watchlist() {
               This will delete the list and all {items.filter(i => i.watchlistId === confirmDeleteList).length} cards in it. This cannot be undone.
             </p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmDeleteList(null)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteList(confirmDeleteList)}
-                className="flex-1 bg-red-500 hover:bg-red-400 text-white font-bold px-4 py-2.5 rounded-lg transition-colors text-sm"
-              >
-                Delete List
-              </button>
+              <button onClick={() => setConfirmDeleteList(null)} className="flex-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">Cancel</button>
+              <button onClick={() => handleDeleteList(confirmDeleteList)} className="flex-1 bg-red-500 hover:bg-red-400 text-white font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">Delete List</button>
             </div>
           </div>
         </div>
@@ -257,9 +234,7 @@ export default function Watchlist() {
           </h1>
           <div className="flex items-center gap-2 mt-1">
             <p className="text-zinc-400 text-sm font-medium">{items.length} cards across {lists.length + 1} lists</p>
-            <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
-              ☁ Synced
-            </span>
+            <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">☁ Synced</span>
           </div>
         </div>
 
@@ -275,23 +250,18 @@ export default function Watchlist() {
 
             {/* List tabs + create */}
             <div className="flex flex-wrap gap-2 items-center">
-
-              {/* Main watchlist tab */}
               <button
                 onClick={() => setActiveListId(null)}
                 className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors " +
-                  (activeListId === null
-                    ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
+                  (activeListId === null ? "bg-blue-500/20 border-blue-500/40 text-blue-300" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
               >
                 ★ Main ({mainCount})
               </button>
 
-              {/* Custom list tabs */}
               {lists.map((list) => {
                 const count = items.filter(i => i.watchlistId === list.id).length;
                 return (
-                  <div key={list.id} className="relative group flex items-center">
+                  <div key={list.id} className="relative flex items-center">
                     {editingListId === list.id ? (
                       <div className="flex gap-1 items-center">
                         <input
@@ -304,53 +274,38 @@ export default function Watchlist() {
                           }}
                           className="bg-zinc-800 border border-blue-500/40 rounded-lg px-3 py-2 text-white text-sm outline-none w-36"
                         />
+                        <button onClick={handleRenameList} className="text-xs bg-blue-500 hover:bg-blue-400 text-white font-bold px-2 py-2 rounded-lg transition-colors">✓</button>
+                        <button onClick={() => { setEditingListId(null); setEditingListName(""); }} className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white font-bold px-2 py-2 rounded-lg transition-colors">✕</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={handleRenameList}
-                          className="text-xs bg-blue-500 hover:bg-blue-400 text-white font-bold px-2 py-2 rounded-lg transition-colors"
+                          onClick={() => setActiveListId(list.id)}
+                          className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors " +
+                            (activeListId === list.id ? "bg-blue-500/20 border-blue-500/40 text-blue-300" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
                         >
-                          ✓
+                          📋 {list.name} ({count})
                         </button>
                         <button
-                          onClick={() => { setEditingListId(null); setEditingListName(""); }}
-                          className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white font-bold px-2 py-2 rounded-lg transition-colors"
+                          onClick={() => { setEditingListId(list.id); setEditingListName(list.name); }}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-blue-400 hover:border-blue-500/40 transition-colors text-xs"
+                          title="Rename list"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteList(list.id)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-red-400 hover:border-red-500/40 transition-colors text-xs"
+                          title="Delete list"
                         >
                           ✕
                         </button>
                       </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => setActiveListId(list.id)}
-                          className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors pr-16 " +
-                            (activeListId === list.id
-                              ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
-                              : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
-                        >
-                          📋 {list.name} ({count})
-                        </button>
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1">
-                          <button
-                            onClick={() => { setEditingListId(list.id); setEditingListName(list.name); }}
-                            className="text-zinc-500 hover:text-blue-400 transition-colors text-xs font-bold"
-                            title="Rename list"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteList(list.id)}
-                            className="text-zinc-500 hover:text-red-400 transition-colors text-xs font-bold"
-                            title="Delete list"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </>
                     )}
                   </div>
                 );
               })}
 
-              {/* Create new list */}
               <div className="flex gap-2 items-center">
                 <input
                   value={newListName}
@@ -377,7 +332,22 @@ export default function Watchlist() {
               </div>
 
               {sorted.length > 0 && (
-                <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 bg-zinc-800 border border-zinc-600 rounded-lg p-1">
+                    <button
+                      onClick={() => setViewMode("table")}
+                      className={"px-3 py-1.5 rounded-md text-sm font-bold transition-colors " + (viewMode === "table" ? "bg-zinc-600 text-white" : "text-zinc-500 hover:text-white")}
+                    >
+                      ☰ List
+                    </button>
+                    <button
+                      onClick={() => setViewMode("grid")}
+                      className={"px-3 py-1.5 rounded-md text-sm font-bold transition-colors " + (viewMode === "grid" ? "bg-zinc-600 text-white" : "text-zinc-500 hover:text-white")}
+                    >
+                      ⊞ Grid
+                    </button>
+                  </div>
+
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-zinc-400 font-semibold">SORT</label>
                     <select
@@ -395,7 +365,7 @@ export default function Watchlist() {
                       onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
                       className="bg-zinc-800 border border-zinc-600 hover:border-zinc-500 rounded-lg px-3 py-2 text-white text-sm transition-colors font-mono"
                     >
-                      {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
+                      {sortDir === "desc" ? "↓" : "↑"}
                     </button>
                   </div>
 
@@ -404,17 +374,10 @@ export default function Watchlist() {
                     disabled={refreshing}
                     className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-600 border border-zinc-600 text-zinc-300 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
                   >
-                    {refreshing ? (
-                      <><span className="animate-spin inline-block">⟳</span> {refreshProgress}/{listItems.length}</>
-                    ) : (
-                      <>⟳ Refresh Prices</>
-                    )}
+                    {refreshing ? <><span className="animate-spin inline-block">⟳</span> {refreshProgress}/{listItems.length}</> : <>⟳ Refresh</>}
                   </button>
 
-                  <button
-                    onClick={exportToCSV}
-                    className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2 rounded-lg transition-colors text-sm"
-                  >
+                  <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-2 rounded-lg transition-colors text-sm">
                     Export CSV
                   </button>
                 </div>
@@ -425,7 +388,7 @@ export default function Watchlist() {
             {sorted.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {(() => {
-                  const profitable = sorted.filter((i) => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
+                  const profitable = sorted.filter(i => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
                   const totalProfit = sorted.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
                   const avgRoi = sorted.length > 0 ? sorted.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).roi, 0) / sorted.length : 0;
                   return (
@@ -469,13 +432,11 @@ export default function Watchlist() {
             )}
 
             {lastRefreshed && (
-              <p className="text-xs text-zinc-600 font-mono">
-                Prices last refreshed at {lastRefreshed.toLocaleTimeString()}
-              </p>
+              <p className="text-xs text-zinc-600 font-mono">Prices last refreshed at {lastRefreshed.toLocaleTimeString()}</p>
             )}
 
-            {/* Table */}
-            {sorted.length > 0 && (
+            {/* Table view */}
+            {sorted.length > 0 && viewMode === "table" && (
               <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -503,15 +464,11 @@ export default function Watchlist() {
                         const roi10Color = r10.roi > 50 ? "text-emerald-400" : r10.roi > 0 ? "text-yellow-400" : "text-red-400";
                         const roi9Color = r9.roi > 50 ? "text-emerald-400" : r9.roi > 0 ? "text-yellow-400" : "text-red-400";
                         const isExpanded = expandedId === item.tcgPlayerId;
-
                         return (
                           <>
                             <tr key={item.tcgPlayerId} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                               <td className="px-4 py-3">
-                                <button
-                                  onClick={() => setExpandedId(isExpanded ? null : item.tcgPlayerId)}
-                                  className="text-zinc-500 hover:text-white transition-colors text-sm font-mono w-5"
-                                >
+                                <button onClick={() => setExpandedId(isExpanded ? null : item.tcgPlayerId)} className="text-zinc-500 hover:text-white transition-colors text-sm font-mono w-5">
                                   {isExpanded ? "▼" : "▶"}
                                 </button>
                               </td>
@@ -524,45 +481,21 @@ export default function Watchlist() {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">
-                                {item.rawPrice > 0 ? "$" + item.rawPrice.toFixed(2) : "N/A"}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">
-                                {item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
-                                {hasPsa9 ? "$" + item.psa9Price.toFixed(2) : "N/A"}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">
-                                ${r10.totalCosts.toFixed(2)}
-                              </td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                                {item.psa10Price > 0 ? (r10.profit >= 0 ? "+" : "") + "$" + r10.profit.toFixed(2) : "N/A"}
-                              </td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                                {item.psa10Price > 0 ? (r10.roi >= 0 ? "+" : "") + r10.roi.toFixed(0) + "%" : "N/A"}
-                              </td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>
-                                {hasPsa9 ? (r9.profit >= 0 ? "+" : "") + "$" + r9.profit.toFixed(2) : "N/A"}
-                              </td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>
-                                {hasPsa9 ? (r9.roi >= 0 ? "+" : "") + r9.roi.toFixed(0) + "%" : "N/A"}
-                              </td>
-                              <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">
-                                {new Date(item.addedAt).toLocaleDateString()}
-                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">{item.rawPrice > 0 ? "$" + item.rawPrice.toFixed(2) : "N/A"}</td>
+                              <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</td>
+                              <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">{hasPsa9 ? "$" + item.psa9Price.toFixed(2) : "N/A"}</td>
+                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${r10.totalCosts.toFixed(2)}</td>
+                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.profit >= 0 ? "+" : "") + "$" + r10.profit.toFixed(2) : "N/A"}</td>
+                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.roi >= 0 ? "+" : "") + r10.roi.toFixed(0) + "%" : "N/A"}</td>
+                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.profit >= 0 ? "+" : "") + "$" + r9.profit.toFixed(2) : "N/A"}</td>
+                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.roi >= 0 ? "+" : "") + r9.roi.toFixed(0) + "%" : "N/A"}</td>
+                              <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">{new Date(item.addedAt).toLocaleDateString()}</td>
                               <td className="px-4 py-3 text-right">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }}
-                                  className="text-zinc-600 hover:text-red-400 transition-colors text-lg"
-                                >
-                                  ×
-                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }} className="text-zinc-600 hover:text-red-400 transition-colors text-lg">×</button>
                               </td>
                             </tr>
-
                             {isExpanded && (
-                              <tr key={item.tcgPlayerId + "-expanded"} className="border-b border-zinc-800">
+                              <tr key={item.tcgPlayerId + "-exp"} className="border-b border-zinc-800">
                                 <td colSpan={12} className="px-4 py-4 bg-zinc-900/40">
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {item.psa10Price > 0 && (
@@ -580,7 +513,6 @@ export default function Watchlist() {
                                         <p className="text-xs font-mono text-zinc-500">Break-even: ${r10.breakEven.toFixed(2)}</p>
                                       </div>
                                     )}
-
                                     {hasPsa9 && (
                                       <div className="bg-blue-400/5 border border-blue-400/10 rounded-xl p-4 space-y-2">
                                         <div className="flex justify-between items-center">
@@ -597,35 +529,26 @@ export default function Watchlist() {
                                       </div>
                                     )}
                                   </div>
-
                                   {item.psa10Price > 0 && hasPsa9 && (
                                     <div className="mt-3 bg-zinc-800/40 border border-zinc-700 rounded-xl p-3">
                                       <p className="text-xs font-mono text-zinc-500 mb-1">Verdict</p>
                                       {(() => {
                                         const diff = r10.profit - r9.profit;
-                                        const bothProfitable = r10.profit > 0 && r9.profit > 0;
-                                        const neitherProfitable = r10.profit <= 0 && r9.profit <= 0;
+                                        const bp = r10.profit > 0 && r9.profit > 0;
+                                        const np = r10.profit <= 0 && r9.profit <= 0;
                                         return (
                                           <p className="text-sm font-bold text-white">
-                                            {neitherProfitable
-                                              ? "Neither grade is profitable at current prices"
-                                              : !bothProfitable && r10.profit > 0
-                                              ? "Only profitable if you hit PSA 10 — PSA 9 is a loss"
-                                              : !bothProfitable && r9.profit > 0
-                                              ? "Even a PSA 9 is profitable on this card"
-                                              : diff > 20
-                                              ? "PSA 10 worth chasing — $" + diff.toFixed(2) + " more than a 9"
+                                            {np ? "Neither grade is profitable at current prices"
+                                              : !bp && r10.profit > 0 ? "Only profitable if you hit PSA 10 — PSA 9 is a loss"
+                                              : !bp && r9.profit > 0 ? "Even a PSA 9 is profitable on this card"
+                                              : diff > 20 ? "PSA 10 worth chasing — $" + diff.toFixed(2) + " more than a 9"
                                               : "PSA 9 nearly as good — only $" + diff.toFixed(2) + " less than a 10"}
                                           </p>
                                         );
                                       })()}
                                     </div>
                                   )}
-
-                                  <button
-                                    onClick={() => router.push(cardUrl(item.tcgPlayerId))}
-                                    className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors font-mono"
-                                  >
+                                  <button onClick={() => router.push(cardUrl(item.tcgPlayerId))} className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors font-mono">
                                     View full detail & price history →
                                   </button>
                                 </td>
@@ -638,16 +561,58 @@ export default function Watchlist() {
                   </table>
                 </div>
                 <div className="px-4 py-3 border-t border-zinc-700 flex items-center justify-between">
-                  <span className="text-sm text-zinc-400 font-medium">
-                    {sorted.length} cards · click ▶ to expand
-                    {lastRefreshed && " · refreshed " + lastRefreshed.toLocaleTimeString()}
-                  </span>
-                  <button
-                    onClick={exportToCSV}
-                    className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
-                  >
-                    Export CSV
-                  </button>
+                  <span className="text-sm text-zinc-400 font-medium">{sorted.length} cards · click ▶ to expand{lastRefreshed && " · refreshed " + lastRefreshed.toLocaleTimeString()}</span>
+                  <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs">Export CSV</button>
+                </div>
+              </div>
+            )}
+
+            {/* Grid view */}
+            {sorted.length > 0 && viewMode === "grid" && (
+              <div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {sorted.map((item: WatchlistItem) => {
+                    const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
+                    const roi10Color = r10.roi > 50 ? "text-emerald-400" : r10.roi > 0 ? "text-yellow-400" : "text-red-400";
+                    return (
+                      <div
+                        key={item.tcgPlayerId}
+                        className="group relative bg-zinc-900/60 border border-zinc-700 hover:border-zinc-500 rounded-xl p-3 transition-all hover:scale-[1.02] cursor-pointer"
+                        onClick={() => router.push(cardUrl(item.tcgPlayerId))}
+                      >
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }}
+                          className="absolute top-2 left-2 w-6 h-6 flex items-center justify-center rounded-full bg-zinc-800/80 text-zinc-500 hover:bg-red-500/80 hover:text-white transition-all z-10 text-xs opacity-0 group-hover:opacity-100"
+                        >
+                          ×
+                        </button>
+                        <div className={"absolute top-2 right-2 text-xs font-black font-mono px-1.5 py-0.5 rounded-md z-10 " +
+                          (r10.roi > 50 ? "bg-emerald-500/20 text-emerald-400" : r10.roi > 0 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400")}>
+                          {r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%
+                        </div>
+                        {item.image && <img src={item.image} alt={item.name} className="w-full rounded-lg mb-2 mt-1" />}
+                        <p className="text-sm font-bold text-white truncate">{item.name}</p>
+                        <p className="text-xs text-zinc-500 truncate mb-1">{item.set}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <div>
+                            <p className="text-xs text-zinc-600 font-mono">Raw</p>
+                            <p className="text-xs text-zinc-300 font-mono font-bold">${item.rawPrice.toFixed(2)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-zinc-600 font-mono">PSA 10</p>
+                            <p className="text-xs text-yellow-400 font-mono font-bold">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</p>
+                          </div>
+                        </div>
+                        <div className={"mt-1.5 text-xs font-mono font-bold text-center py-1 rounded-lg " + (r10.profit >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>
+                          {r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)} profit
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 flex items-center justify-between">
+                  <span className="text-sm text-zinc-400 font-medium">{sorted.length} cards</span>
+                  <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs">Export CSV</button>
                 </div>
               </div>
             )}
