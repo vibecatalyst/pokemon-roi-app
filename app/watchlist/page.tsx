@@ -33,6 +33,7 @@ export default function Watchlist() {
   const [creatingList, setCreatingList] = useState(false);
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [editingListName, setEditingListName] = useState("");
+  const [mainListName, setMainListName] = useState("Main");
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const { fees } = useFees();
   const router = useRouter();
@@ -71,11 +72,17 @@ export default function Watchlist() {
     setEditingListName("");
   }
 
+  function handleRenameMain() {
+    if (!editingListName.trim()) return;
+    setMainListName(editingListName.trim());
+    setEditingListId(null);
+    setEditingListName("");
+  }
+
   async function handleRefreshAll() {
     if (listItems.length === 0) return;
     setRefreshing(true);
     setRefreshProgress(0);
-
     const updated = [...listItems];
     for (let i = 0; i < updated.length; i++) {
       try {
@@ -102,7 +109,6 @@ export default function Watchlist() {
       setRefreshProgress(i + 1);
       await new Promise((r) => setTimeout(r, 300));
     }
-
     for (const item of updated) {
       await fetch("/api/db/watchlist", {
         method: "POST",
@@ -122,7 +128,6 @@ export default function Watchlist() {
         }),
       });
     }
-
     await reload();
     setRefreshing(false);
     setRefreshProgress(0);
@@ -189,7 +194,7 @@ export default function Watchlist() {
     );
   }
 
-  const activeListName = activeListId === null ? "Main Watchlist" : lists.find(l => l.id === activeListId)?.name ?? "Unknown";
+  const activeListName = activeListId === null ? mainListName : lists.find(l => l.id === activeListId)?.name ?? "Unknown";
   const mainCount = items.filter(i => !i.watchlistId).length;
 
   if (!mounted) return null;
@@ -250,18 +255,49 @@ export default function Watchlist() {
 
             {/* List tabs + create */}
             <div className="flex flex-wrap gap-2 items-center">
-              <button
-                onClick={() => setActiveListId(null)}
-                className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors " +
-                  (activeListId === null ? "bg-blue-500/20 border-blue-500/40 text-blue-300" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
-              >
-                ★ Main ({mainCount})
-              </button>
 
+              {/* Main watchlist tab */}
+              <div className="relative group flex items-center gap-1">
+                {editingListId === "main" ? (
+                  <div className="flex gap-1 items-center">
+                    <input
+                      autoFocus
+                      value={editingListName}
+                      onChange={(e) => setEditingListName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRenameMain();
+                        if (e.key === "Escape") { setEditingListId(null); setEditingListName(""); }
+                      }}
+                      className="bg-zinc-800 border border-blue-500/40 rounded-lg px-3 py-2 text-white text-sm outline-none w-36"
+                    />
+                    <button onClick={handleRenameMain} className="text-xs bg-blue-500 hover:bg-blue-400 text-white font-bold px-2 py-2 rounded-lg transition-colors">✓</button>
+                    <button onClick={() => { setEditingListId(null); setEditingListName(""); }} className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white font-bold px-2 py-2 rounded-lg transition-colors">✕</button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setActiveListId(null)}
+                      className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors " +
+                        (activeListId === null ? "bg-blue-500/20 border-blue-500/40 text-blue-300" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
+                    >
+                      ★ {mainListName} ({mainCount})
+                    </button>
+                    <button
+                      onClick={() => { setEditingListId("main"); setEditingListName(mainListName); }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-blue-400 hover:border-blue-500/40 transition-colors text-xs opacity-0 group-hover:opacity-100"
+                      title="Rename list"
+                    >
+                      ✎
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Custom list tabs */}
               {lists.map((list) => {
                 const count = items.filter(i => i.watchlistId === list.id).length;
                 return (
-                  <div key={list.id} className="relative flex items-center">
+                  <div key={list.id} className="relative group flex items-center gap-1">
                     {editingListId === list.id ? (
                       <div className="flex gap-1 items-center">
                         <input
@@ -278,7 +314,7 @@ export default function Watchlist() {
                         <button onClick={() => { setEditingListId(null); setEditingListName(""); }} className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white font-bold px-2 py-2 rounded-lg transition-colors">✕</button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1">
+                      <>
                         <button
                           onClick={() => setActiveListId(list.id)}
                           className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors " +
@@ -288,24 +324,25 @@ export default function Watchlist() {
                         </button>
                         <button
                           onClick={() => { setEditingListId(list.id); setEditingListName(list.name); }}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-blue-400 hover:border-blue-500/40 transition-colors text-xs"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-blue-400 hover:border-blue-500/40 transition-colors text-xs opacity-0 group-hover:opacity-100"
                           title="Rename list"
                         >
                           ✎
                         </button>
                         <button
                           onClick={() => setConfirmDeleteList(list.id)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-red-400 hover:border-red-500/40 transition-colors text-xs"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-red-400 hover:border-red-500/40 transition-colors text-xs opacity-0 group-hover:opacity-100"
                           title="Delete list"
                         >
                           ✕
                         </button>
-                      </div>
+                      </>
                     )}
                   </div>
                 );
               })}
 
+              {/* Create new list */}
               <div className="flex gap-2 items-center">
                 <input
                   value={newListName}
