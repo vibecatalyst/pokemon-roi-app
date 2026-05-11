@@ -25,7 +25,7 @@ function StatBox({ label, value, sub, highlight }: {
   return (
     <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <p className="text-xs text-zinc-400 font-mono mb-1">{label}</p>
-      <p className={`text-2xl font-black font-mono ${highlight ? colors[highlight] : "text-white"}`}>{value}</p>
+      <p className={"text-2xl font-black font-mono " + (highlight ? colors[highlight] : "text-white")}>{value}</p>
       {sub && <p className="text-xs text-zinc-500 mt-0.5">{sub}</p>}
     </div>
   );
@@ -33,7 +33,8 @@ function StatBox({ label, value, sub, highlight }: {
 
 export default function CardResult({ card, fees }: Props) {
   const psa10 = card.psa10Price > 0 ? calcROI(card.psa10Price, card.rawPrice, fees) : null;
-  const psa9 = card.psa9Price && card.psa9Price > 0 ? calcROI(card.psa9Price, card.rawPrice, fees) : null;
+  const psa9Price = card.psa9Price ?? 0;
+  const psa9 = psa9Price > 0 ? calcROI(psa9Price, card.rawPrice, fees) : null;
 
   return (
     <div className="space-y-6">
@@ -42,14 +43,13 @@ export default function CardResult({ card, fees }: Props) {
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <div className="flex flex-col sm:flex-row gap-6 items-start">
 
-          {/* Card image — large and crisp */}
+          {/* Card image */}
           {card.image && (
             <div className="flex-shrink-0 mx-auto sm:mx-0">
               <img
                 src={card.image}
                 alt={card.name}
                 className="w-48 sm:w-56 rounded-xl shadow-2xl shadow-black/50 ring-1 ring-zinc-700"
-                style={{ imageRendering: "auto" }}
               />
             </div>
           )}
@@ -57,7 +57,7 @@ export default function CardResult({ card, fees }: Props) {
           {/* Card info */}
           <div className="flex-1 min-w-0">
             <h2 className="text-2xl sm:text-3xl font-black text-white mb-1">{card.name}</h2>
-            <p className="text-zinc-400 text-sm mb-4">{card.set} · {card.rarity} · #{card.number}</p>
+            <p className="text-zinc-400 text-sm mb-4">{card.set} &middot; {card.rarity} &middot; #{card.number}</p>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3">
@@ -76,17 +76,19 @@ export default function CardResult({ card, fees }: Props) {
                 </div>
               )}
 
-              {card.psa9Price && card.psa9Price > 0 && (
+              {psa9Price > 0 && (
                 <div className="bg-blue-400/10 border border-blue-400/20 rounded-xl p-3">
                   <p className="text-xs text-blue-400 font-mono mb-1">PSA 9</p>
-                  <p className="text-xl font-black text-blue-400 font-mono">${card.psa9Price.toFixed(2)}</p>
+                  <p className="text-xl font-black text-blue-400 font-mono">${psa9Price.toFixed(2)}</p>
                   <p className="text-xs text-zinc-500 mt-0.5">Mint</p>
                 </div>
               )}
 
               <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3">
                 <p className="text-xs text-zinc-400 font-mono mb-1">GRADING COST</p>
-                <p className="text-xl font-black text-white font-mono">${(fees.gradingFee + fees.shippingToGrader + fees.shippingBack).toFixed(2)}</p>
+                <p className="text-xl font-black text-white font-mono">
+                  ${(fees.gradingFee + fees.shippingToGrader + fees.shippingBack).toFixed(2)}
+                </p>
                 <p className="text-xs text-zinc-500 mt-0.5">Fee + shipping</p>
               </div>
 
@@ -116,7 +118,7 @@ export default function CardResult({ card, fees }: Props) {
       {psa10 && (
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-black text-white">PSA 10 — Gem Mint</h3>
+            <h3 className="text-lg font-black text-white">PSA 10 &mdash; Gem Mint</h3>
             <div className="text-right">
               <p className={"text-3xl font-black font-mono " + (psa10.roi >= 0 ? "text-emerald-400" : "text-red-400")}>
                 {psa10.roi >= 0 ? "+" : ""}{psa10.roi.toFixed(0)}%
@@ -148,16 +150,15 @@ export default function CardResult({ card, fees }: Props) {
             />
           </div>
 
-          {/* Verdict */}
           <div className={"mt-4 rounded-xl p-4 border " + (psa10.profit >= 0 ? "bg-emerald-400/5 border-emerald-400/20" : "bg-red-400/5 border-red-400/20")}>
             <p className={"text-base font-bold " + (psa10.profit >= 0 ? "text-emerald-400" : "text-red-400")}>
               {psa10.profit >= 100
-                ? "🔥 Strong flip — high margin at PSA 10"
+                ? "Strong flip — high margin at PSA 10"
                 : psa10.profit >= 20
-                ? "✅ Profitable at PSA 10"
+                ? "Profitable at PSA 10"
                 : psa10.profit >= 0
-                ? "⚠️ Barely profitable — thin margin"
-                : "❌ Not profitable at current prices"}
+                ? "Barely profitable — thin margin"
+                : "Not profitable at current prices"}
             </p>
             <p className="text-sm text-zinc-400 mt-1">
               {psa10.profit >= 0
@@ -172,7 +173,7 @@ export default function CardResult({ card, fees }: Props) {
       {psa9 && (
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-black text-white">PSA 9 — Mint</h3>
+            <h3 className="text-lg font-black text-white">PSA 9 &mdash; Mint</h3>
             <div className="text-right">
               <p className={"text-3xl font-black font-mono " + (psa9.roi >= 0 ? "text-blue-400" : "text-red-400")}>
                 {psa9.roi >= 0 ? "+" : ""}{psa9.roi.toFixed(0)}%
@@ -208,14 +209,14 @@ export default function CardResult({ card, fees }: Props) {
             <div className="mt-4 bg-zinc-800/40 border border-zinc-700 rounded-xl p-4">
               <p className="text-sm font-bold text-white">
                 {psa10.profit > 0 && psa9.profit > 0 && psa10.profit - psa9.profit > 20
-                  ? "✅ PSA 10 worth chasing — $" + (psa10.profit - psa9.profit).toFixed(2) + " more profit than a 9"
+                  ? "PSA 10 worth chasing — $" + (psa10.profit - psa9.profit).toFixed(2) + " more profit than a 9"
                   : psa10.profit > 0 && psa9.profit > 0
-                  ? "🟡 PSA 9 nearly as good — only $" + (psa10.profit - psa9.profit).toFixed(2) + " less than a 10"
+                  ? "PSA 9 nearly as good — only $" + (psa10.profit - psa9.profit).toFixed(2) + " less than a 10"
                   : psa10.profit > 0 && psa9.profit <= 0
-                  ? "⚠️ Only profitable if you hit PSA 10 — PSA 9 is a loss"
+                  ? "Only profitable if you hit PSA 10 — PSA 9 is a loss"
                   : psa9.profit > 0 && psa10.profit <= 0
-                  ? "✅ Even a PSA 9 is profitable on this card"
-                  : "❌ Neither grade is profitable at current prices"}
+                  ? "Even a PSA 9 is profitable on this card"
+                  : "Neither grade is profitable at current prices"}
               </p>
             </div>
           )}
