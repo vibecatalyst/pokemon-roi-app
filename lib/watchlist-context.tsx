@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { WatchlistItem, getWatchlist, addToWatchlist as localAdd, removeFromWatchlist as localRemove } from "@/lib/watchlist";
-import { dbGetWatchlist, dbAddToWatchlist, dbRemoveFromWatchlist, dbGetWatchlists, dbCreateWatchlist, dbDeleteWatchlist } from "@/lib/db";
+import { dbGetWatchlist, dbAddToWatchlist, dbRemoveFromWatchlist, dbGetWatchlists, dbCreateWatchlist, dbDeleteWatchlist, dbRenameWatchlist } from "@/lib/db";
 
 export interface WatchlistList {
   id: string;
@@ -24,6 +24,7 @@ interface WatchlistContextType {
   isWatched: (tcgPlayerId: string, watchlistId?: string) => boolean;
   createList: (name: string) => Promise<WatchlistList | null>;
   deleteList: (id: string) => Promise<void>;
+  renameList: (id: string, name: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -36,6 +37,7 @@ const WatchlistContext = createContext<WatchlistContextType>({
   isWatched: () => false,
   createList: async () => null,
   deleteList: async () => {},
+  renameList: async () => {},
   reload: async () => {},
 });
 
@@ -141,8 +143,13 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     setItems(prev => prev.filter(i => i.watchlistId !== id));
   }
 
+  async function renameList(id: string, name: string) {
+    await dbRenameWatchlist(id, name);
+    setLists(prev => prev.map(l => l.id === id ? { ...l, name } : l));
+  }
+
   return (
-    <WatchlistContext.Provider value={{ items, lists, loading, addItem, removeItem, isWatched, createList, deleteList, reload }}>
+    <WatchlistContext.Provider value={{ items, lists, loading, addItem, removeItem, isWatched, createList, deleteList, renameList, reload }}>
       {children}
     </WatchlistContext.Provider>
   );

@@ -51,6 +51,17 @@ export async function dbDeleteWatchlist(id: string) {
   return res.ok;
 }
 
+export async function dbRenameWatchlist(id: string, name: string) {
+  const res = await fetch("/api/db/watchlists", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, name }),
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
 export async function dbGetSubmissions() {
   const res = await fetch("/api/db/submissions");
   if (!res.ok) return null;

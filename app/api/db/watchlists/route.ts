@@ -27,6 +27,21 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ data });
 }
 
+export async function PATCH(req: NextRequest) {
+  const { isAuthenticated, userId } = await auth();
+  if (!isAuthenticated || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id, name } = await req.json();
+  const { data, error } = await supabase
+    .from("watchlists")
+    .update({ name })
+    .eq("user_id", userId)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ data });
+}
+
 export async function DELETE(req: NextRequest) {
   const { isAuthenticated, userId } = await auth();
   if (!isAuthenticated || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

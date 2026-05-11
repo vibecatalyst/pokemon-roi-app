@@ -18,7 +18,7 @@ function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFee
 }
 
 export default function Watchlist() {
-  const { items, lists, loading: syncing, removeItem, deleteList, reload } = useWatchlist();
+  const { items, lists, loading: syncing, removeItem, deleteList, renameList, reload, createList } = useWatchlist();
   const [mounted, setMounted] = useState(false);
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("roi");
@@ -31,25 +31,19 @@ export default function Watchlist() {
   const [confirmDeleteList, setConfirmDeleteList] = useState<string | null>(null);
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
+  const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [editingListName, setEditingListName] = useState("");
   const { fees } = useFees();
-  const { createList } = useWatchlist();
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // filtered items for active list
   const listItems = useMemo(() => {
-    if (activeListId === null) {
-      // show items with no watchlist_id (main watchlist)
-      return items.filter(i => !i.watchlistId);
-    }
+    if (activeListId === null) return items.filter(i => !i.watchlistId);
     return items.filter(i => i.watchlistId === activeListId);
   }, [items, activeListId]);
-
-  // all items across all lists for stats
-  const allItems = items;
 
   async function handleRemove(tcgPlayerId: string) {
     const watchlistId = activeListId ?? undefined;
@@ -68,6 +62,13 @@ export default function Watchlist() {
     await createList(newListName.trim());
     setNewListName("");
     setCreatingList(false);
+  }
+
+  async function handleRenameList() {
+    if (!editingListId || !editingListName.trim()) return;
+    await renameList(editingListId, editingListName.trim());
+    setEditingListId(null);
+    setEditingListName("");
   }
 
   async function handleRefreshAll() {
@@ -192,7 +193,6 @@ export default function Watchlist() {
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
-      {/* Watchlist picker for adding new card */}
       {showAddPicker && (
         <WatchlistPicker
           card={{
@@ -210,12 +210,11 @@ export default function Watchlist() {
         />
       )}
 
-      {/* Confirm delete list modal */}
       {confirmDeleteList && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#0d0d14] border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
             <h2 className="text-lg font-black text-white">Delete Watchlist?</h2>
-            <p className="text-zinc-400 text-sm">
+            <p className="text-zinc-400 text-sm font-medium">
               This will delete the list and all {items.filter(i => i.watchlistId === confirmDeleteList).length} cards in it. This cannot be undone.
             </p>
             <div className="flex gap-3">
@@ -245,7 +244,7 @@ export default function Watchlist() {
             <span className="text-blue-400">WATCHLISTS</span>
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-zinc-400 text-sm font-medium">{allItems.length} cards across {lists.length + 1} lists</p>
+            <p className="text-zinc-400 text-sm font-medium">{items.length} cards across {lists.length + 1} lists</p>
             <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
               ☁ Synced
             </span>
@@ -264,6 +263,7 @@ export default function Watchlist() {
 
             {/* List tabs + create */}
             <div className="flex flex-wrap gap-2 items-center">
+
               {/* Main watchlist tab */}
               <button
                 onClick={() => setActiveListId(null)}
@@ -279,28 +279,66 @@ export default function Watchlist() {
               {lists.map((list) => {
                 const count = items.filter(i => i.watchlistId === list.id).length;
                 return (
-                  <div key={list.id} className="relative group">
-                    <button
-                      onClick={() => setActiveListId(list.id)}
-                      className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors pr-8 " +
-                        (activeListId === list.id
-                          ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
-                          : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
-                    >
-                      📋 {list.name} ({count})
-                    </button>
-                    <button
-                      onClick={() => setConfirmDeleteList(list.id)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-red-400 transition-colors text-xs font-bold opacity-0 group-hover:opacity-100"
-                      title="Delete list"
-                    >
-                      ✕
-                    </button>
+                  <div key={list.id} className="relative group flex items-center">
+                    {editingListId === list.id ? (
+                      <div className="flex gap-1 items-center">
+                        <input
+                          autoFocus
+                          value={editingListName}
+                          onChange={(e) => setEditingListName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameList();
+                            if (e.key === "Escape") { setEditingListId(null); setEditingListName(""); }
+                          }}
+                          className="bg-zinc-800 border border-blue-500/40 rounded-lg px-3 py-2 text-white text-sm outline-none w-36"
+                        />
+                        <button
+                          onClick={handleRenameList}
+                          className="text-xs bg-blue-500 hover:bg-blue-400 text-white font-bold px-2 py-2 rounded-lg transition-colors"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => { setEditingListId(null); setEditingListName(""); }}
+                          className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white font-bold px-2 py-2 rounded-lg transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setActiveListId(list.id)}
+                          className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors pr-16 " +
+                            (activeListId === list.id
+                              ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
+                              : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
+                        >
+                          📋 {list.name} ({count})
+                        </button>
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1">
+                          <button
+                            onClick={() => { setEditingListId(list.id); setEditingListName(list.name); }}
+                            className="text-zinc-500 hover:text-blue-400 transition-colors text-xs font-bold"
+                            title="Rename list"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteList(list.id)}
+                            className="text-zinc-500 hover:text-red-400 transition-colors text-xs font-bold"
+                            title="Delete list"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
 
-              {/* Create new list inline */}
+              {/* Create new list */}
               <div className="flex gap-2 items-center">
                 <input
                   value={newListName}
@@ -312,7 +350,7 @@ export default function Watchlist() {
                 <button
                   onClick={handleCreateList}
                   disabled={creatingList || !newListName.trim()}
-                  className="bg-yellow-400 hover:bg-yellow-300 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-bold px-3 py-2 rounded-lg transition-colors text-sm"
+                  className="bg-yellow-400 hover:bg-yellow-300 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-bold px-3 py-2 rounded-lg transition-colors text-sm whitespace-nowrap"
                 >
                   {creatingList ? "..." : "+ Create"}
                 </button>
@@ -371,7 +409,7 @@ export default function Watchlist() {
               )}
             </div>
 
-            {/* Stats for active list */}
+            {/* Stats */}
             {sorted.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {(() => {
