@@ -1,665 +1,729 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { useWatchlist } from "@/lib/watchlist-context";
-import { WatchlistItem } from "@/lib/watchlist";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CardData } from "@/lib/types";
+import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
+import { useWatchlist } from "@/lib/watchlist-context";
 import WatchlistPicker from "@/components/WatchlistPicker";
 import Link from "next/link";
 
-function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFees>["fees"]) {
-  const totalCosts = rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
-  const saleProceeds = price * (1 - fees.ebayFeePercent / 100);
-  const profit = saleProceeds - totalCosts;
+function calcProfit(card: CardData, fees: ReturnType<typeof useFees>["fees"]) {
+  const totalCosts = card.rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
+  const saleProceeds10 = card.psa10Price * (1 - fees.ebayFeePercent / 100);
+  const profit = saleProceeds10 - totalCosts;
   const roi = totalCosts > 0 ? (profit / totalCosts) * 100 : 0;
-  const breakEven = totalCosts / (1 - fees.ebayFeePercent / 100);
-  return { profit, roi, totalCosts, saleProceeds, breakEven };
+  const psa9Price = card.psa9Price ?? 0;
+  const saleProceeds9 = psa9Price * (1 - fees.ebayFeePercent / 100);
+  const profit9 = saleProceeds9 - totalCosts;
+  const roi9 = totalCosts > 0 ? (profit9 / totalCosts) * 100 : 0;
+  return { profit, roi, totalCosts, saleProceeds: saleProceeds10, profit9, roi9, psa9Price };
 }
 
-export default function Watchlist() {
-  const { items, lists, loading: syncing, removeItem, deleteList, renameList, reload, createList } = useWatchlist();
-  const [mounted, setMounted] = useState(false);
-  const [activeListId, setActiveListId] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"roi" | "raw" | "psa10" | "profit" | "added">("roi");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshProgress, setRefreshProgress] = useState(0);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const [showAddPicker, setShowAddPicker] = useState(false);
-  const [confirmDeleteList, setConfirmDeleteList] = useState<string | null>(null);
-  const [newListName, setNewListName] = useState("");
-  const [creatingList, setCreatingList] = useState(false);
-  const [editingListId, setEditingListId] = useState<string | null>(null);
-  const [editingListName, setEditingListName] = useState("");
-  const [mainListName, setMainListName] = useState("Main");
-  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+type EnrichedCard = CardData & {
+  profit: number;
+  roi: number;
+  totalCosts: number;
+  saleProceeds: number;
+  profit9: number;
+  roi9: number;
+  psa9Price: number;
+};
+
+const NEG_INF = -999999;
+const POS_INF = 999999;
+
+function BulkWatchlistPicker({ cards, onClose }: { cards: EnrichedCard[]; onClose: () => void }) {
+  const { lists, addItem } = useWatchlist();
+  const [selectedListId, setSelectedListId] = useState<string | undefined>(undefined);
+  const [adding, setAdding] = useState(false);
+  const [done, setDone] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  async function handleAddAll() {
+    setAdding(true);
+    setProgress(0);
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      await addItem({
+        tcgPlayerId: card.tcgPlayerId,
+        name: card.name,
+        set: card.set,
+        image: card.image,
+        rawPrice: card.rawPrice,
+        psa10Price: card.psa10Price,
+        psa9Price: card.psa9Price ?? 0,
+        rarity: card.rarity,
+        number: card.number,
+        addedAt: new Date().toISOString(),
+      }, selectedListId);
+      setProgress(i + 1);
+    }
+    setAdding(false);
+    setDone(true);
+  }
+
+  const listName = selectedListId === undefined
+    ? "Main Watchlist"
+    : lists.find(l => l.id === selectedListId)?.name ?? "Unknown";
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#0d0d14] border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-black text-white">Add All to Watchlist</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors text-xl">✕</button>
+        </div>
+
+        <p className="text-zinc-400 text-sm font-medium">
+          Add all <span className="text-white font-bold">{cards.length} cards</span> from the current filtered list to a watchlist.
+        </p>
+
+        {!done && (
+          <>
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">Choose Watchlist</p>
+
+              <button
+                onClick={() => setSelectedListId(undefined)}
+                className={"w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors " +
+                  (selectedListId === undefined
+                    ? "bg-blue-500/20 border-blue-500/40 text-white"
+                    : "bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-zinc-500")}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">★</span>
+                  <span className="font-semibold text-sm">Main Watchlist</span>
+                </div>
+                {selectedListId === undefined && <span className="text-xs text-blue-400 font-bold">Selected ✓</span>}
+              </button>
+
+              {lists.map((list) => (
+                <button
+                  key={list.id}
+                  onClick={() => setSelectedListId(list.id)}
+                  className={"w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors " +
+                    (selectedListId === list.id
+                      ? "bg-blue-500/20 border-blue-500/40 text-white"
+                      : "bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-zinc-500")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">📋</span>
+                    <span className="font-semibold text-sm">{list.name}</span>
+                  </div>
+                  {selectedListId === list.id && <span className="text-xs text-blue-400 font-bold">Selected ✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {adding && (
+              <div className="space-y-2">
+                <div className="w-full bg-zinc-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-400 rounded-full transition-all"
+                    style={{ width: (progress / cards.length * 100) + "%" }}
+                  />
+                </div>
+                <p className="text-xs text-zinc-400 font-mono text-center">Adding {progress} of {cards.length}...</p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={onClose} className="flex-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={handleAddAll}
+                disabled={adding}
+                className="flex-1 bg-blue-500 hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-bold px-4 py-2.5 rounded-lg transition-colors text-sm"
+              >
+                {adding ? "Adding..." : "Add All " + cards.length + " Cards"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {done && (
+          <div className="space-y-4">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center">
+              <p className="text-2xl mb-1">✅</p>
+              <p className="text-emerald-400 font-bold text-sm">Added {cards.length} cards to {listName}</p>
+            </div>
+            <button onClick={onClose} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LeaderboardInner() {
   const { fees } = useFees();
+  const { isWatched, removeItem } = useWatchlist();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [sets, setSets] = useState<{ name: string; id: string }[]>([]);
+  const [selectedSet, setSelectedSet] = useState(searchParams.get("set") ?? "");
+  const [cards, setCards] = useState<CardData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [setsLoading, setSetsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [rarityFilter, setRarityFilter] = useState(searchParams.get("rarity") ?? "All");
+  const [sortBy, setSortBy] = useState<"roi" | "profit" | "psa10" | "raw" | "roi9" | "profit9">(
+    (searchParams.get("sort") as "roi" | "profit" | "psa10" | "raw" | "roi9" | "profit9") ?? "roi"
+  );
+  const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
+  const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "1") || 1);
+  const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || POS_INF);
+  const [minRoi, setMinRoi] = useState(parseFloat(searchParams.get("minRoi") ?? "") || NEG_INF);
+  const [maxRoi, setMaxRoi] = useState(parseFloat(searchParams.get("maxRoi") ?? "") || POS_INF);
+  const [showAll, setShowAll] = useState(false);
+  const [pickerCard, setPickerCard] = useState<EnrichedCard | null>(null);
+  const [showBulkPicker, setShowBulkPicker] = useState(false);
+
+  function updateUrl(params: Record<string, string>) {
+    const current = new URLSearchParams(searchParams.toString());
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) current.set(k, v);
+      else current.delete(k);
+    });
+    router.replace("/leaderboard?" + current.toString(), { scroll: false });
+  }
 
   useEffect(() => {
-    setMounted(true);
+    fetch("/api/sets")
+      .then((r) => r.json())
+      .then((json) => {
+        const data = json.data ?? json ?? [];
+        setSets(Array.isArray(data) ? data.map((s: Record<string, string>) => ({ name: s.name, id: s.id ?? s.name })) : []);
+        setSetsLoading(false);
+      })
+      .catch(() => setSetsLoading(false));
   }, []);
 
-  const listItems = useMemo(() => {
-    if (activeListId === null) return items.filter(i => !i.watchlistId);
-    return items.filter(i => i.watchlistId === activeListId);
-  }, [items, activeListId]);
-
-  async function handleRemove(tcgPlayerId: string) {
-    await removeItem(tcgPlayerId, activeListId ?? undefined);
-  }
-
-  async function handleDeleteList(id: string) {
-    await deleteList(id);
-    setConfirmDeleteList(null);
-    setActiveListId(null);
-  }
-
-  async function handleCreateList() {
-    if (!newListName.trim()) return;
-    setCreatingList(true);
-    await createList(newListName.trim());
-    setNewListName("");
-    setCreatingList(false);
-  }
-
-  async function handleRenameList() {
-    if (!editingListId || !editingListName.trim()) return;
-    await renameList(editingListId, editingListName.trim());
-    setEditingListId(null);
-    setEditingListName("");
-  }
-
-  function handleRenameMain() {
-    if (!editingListName.trim()) return;
-    setMainListName(editingListName.trim());
-    setEditingListId(null);
-    setEditingListName("");
-  }
-
-  async function handleRefreshAll() {
-    if (listItems.length === 0) return;
-    setRefreshing(true);
-    setRefreshProgress(0);
-    const updated = [...listItems];
-    for (let i = 0; i < updated.length; i++) {
-      try {
-        const res = await fetch("/api/card?id=" + updated[i].tcgPlayerId);
-        const json = await res.json();
-        const raw = json.data;
-        const cardData = Array.isArray(raw) ? raw[0] : raw;
-        if (cardData) {
-          const prices = (cardData.prices as Record<string, number>) ?? {};
-          const rawPrice = prices.market ?? prices.low ?? updated[i].rawPrice;
-          const ebay = (cardData.ebay as Record<string, unknown>) ?? {};
-          const salesByGrade = (ebay.salesByGrade as Record<string, Record<string, unknown>>) ?? {};
-          const psa10 = salesByGrade.psa10 ?? {};
-          const psa9 = salesByGrade.psa9 ?? {};
-          const smart10 = (psa10.smartMarketPrice as Record<string, number>) ?? {};
-          const smart9 = (psa9.smartMarketPrice as Record<string, number>) ?? {};
-          const psa10Price = smart10.price ?? (psa10.marketPrice7Day as number) ?? updated[i].psa10Price;
-          const psa9Price = smart9.price ?? (psa9.marketPrice7Day as number) ?? updated[i].psa9Price;
-          updated[i] = { ...updated[i], rawPrice, psa10Price, psa9Price };
-        }
-      } catch {
-        // keep existing price
-      }
-      setRefreshProgress(i + 1);
-      await new Promise((r) => setTimeout(r, 300));
+  useEffect(() => {
+    const fromUrl = searchParams.get("set");
+    if (fromUrl) {
+      setSelectedSet(fromUrl);
+      fetchSetCards(fromUrl);
     }
-    for (const item of updated) {
-      await fetch("/api/db/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tcgPlayerId: item.tcgPlayerId,
-          name: item.name,
-          set: item.set,
-          image: item.image,
-          rawPrice: item.rawPrice,
-          psa10Price: item.psa10Price,
-          psa9Price: item.psa9Price,
-          rarity: item.rarity,
-          number: item.number,
-          addedAt: item.addedAt,
-          watchlistId: item.watchlistId ?? null,
-        }),
+  }, []);
+
+  async function fetchSetCards(setName: string) {
+    setLoading(true);
+    setError("");
+    setCards([]);
+    setShowAll(false);
+    try {
+      const res = await fetch("/api/set-cards?set=" + encodeURIComponent(setName));
+      const json = await res.json();
+      if (json.error) { setError(json.message ?? json.error); return; }
+      const raw = json.data ?? [];
+      setCards(raw.map(mapApiCard));
+    } catch {
+      setError("Failed to fetch set data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleSetChange(setName: string) {
+    setSelectedSet(setName);
+    updateUrl({ set: setName });
+    if (setName) {
+      localStorage.setItem("pokeroi-last-set", setName);
+      fetchSetCards(setName);
+    }
+  }
+
+  function handleRarityChange(rarity: string) {
+    setRarityFilter(rarity);
+    setShowAll(false);
+    updateUrl({ rarity: rarity === "All" ? "" : rarity });
+  }
+
+  function handleSortByChange(sort: typeof sortBy) {
+    setSortBy(sort);
+    setShowAll(false);
+    updateUrl({ sort });
+  }
+
+  function handleSortDirChange() {
+    const next = sortDir === "desc" ? "asc" : "desc";
+    setSortDir(next);
+    setShowAll(false);
+    updateUrl({ dir: next });
+  }
+
+  function handleMinRawChange(val: number) {
+    setMinRaw(val);
+    setShowAll(false);
+    updateUrl({ min: String(val) });
+  }
+
+  function handleMaxRawChange(val: number) {
+    setMaxRaw(val);
+    setShowAll(false);
+    updateUrl({ max: val === POS_INF ? "" : String(val) });
+  }
+
+  function handleMinRoiChange(val: number) {
+    setMinRoi(val);
+    setShowAll(false);
+    updateUrl({ minRoi: val === NEG_INF ? "" : String(val) });
+  }
+
+  function handleMaxRoiChange(val: number) {
+    setMaxRoi(val);
+    setShowAll(false);
+    updateUrl({ maxRoi: val === POS_INF ? "" : String(val) });
+  }
+
+  function resetFilters() {
+    setRarityFilter("All");
+    setMinRaw(1);
+    setMaxRaw(POS_INF);
+    setMinRoi(NEG_INF);
+    setMaxRoi(POS_INF);
+    setShowAll(false);
+    updateUrl({ rarity: "", min: "1", max: "", minRoi: "", maxRoi: "" });
+  }
+
+  async function toggleWatch(e: React.MouseEvent, card: EnrichedCard) {
+    e.stopPropagation();
+    if (isWatched(card.tcgPlayerId)) {
+      await removeItem(card.tcgPlayerId);
+    } else {
+      setPickerCard(card);
+    }
+  }
+
+  const rarities = useMemo(() => {
+    const all = new Set(cards.map((c) => c.rarity).filter(Boolean));
+    return ["All", ...Array.from(all)];
+  }, [cards]);
+
+  const filtered: EnrichedCard[] = useMemo(() => {
+    return cards
+      .filter((c) => c.psa10Price > 0 && c.rawPrice >= minRaw && c.rawPrice <= maxRaw)
+      .filter((c) => rarityFilter === "All" || c.rarity === rarityFilter)
+      .map((c) => ({ ...c, ...calcProfit(c, fees) }))
+      .filter((c) => c.roi >= minRoi && c.roi <= maxRoi)
+      .sort((a, b) => {
+        let diff = 0;
+        if (sortBy === "roi") diff = b.roi - a.roi;
+        else if (sortBy === "profit") diff = b.profit - a.profit;
+        else if (sortBy === "psa10") diff = b.psa10Price - a.psa10Price;
+        else if (sortBy === "roi9") diff = b.roi9 - a.roi9;
+        else if (sortBy === "profit9") diff = b.profit9 - a.profit9;
+        else diff = b.rawPrice - a.rawPrice;
+        return sortDir === "desc" ? diff : -diff;
       });
-    }
-    await reload();
-    setRefreshing(false);
-    setRefreshProgress(0);
-    setLastRefreshed(new Date());
-  }
+  }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw, minRoi, maxRoi]);
 
-  function toggleSort(key: typeof sortBy) {
-    if (sortBy === key) setSortDir(sortDir === "desc" ? "asc" : "desc");
-    else { setSortBy(key); setSortDir("desc"); }
-  }
+  const visibleCards = showAll ? filtered : filtered.slice(0, 10);
 
-  function cardUrl(tcgPlayerId: string) {
-    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/watchlist");
-  }
-
-  const sorted = useMemo(() => {
-    return [...listItems].sort((a, b) => {
-      const roiA = calcROI(a.psa10Price, a.rawPrice, fees).roi;
-      const roiB = calcROI(b.psa10Price, b.rawPrice, fees).roi;
-      const profitA = calcROI(a.psa10Price, a.rawPrice, fees).profit;
-      const profitB = calcROI(b.psa10Price, b.rawPrice, fees).profit;
-      let diff = 0;
-      if (sortBy === "roi") diff = roiB - roiA;
-      else if (sortBy === "raw") diff = b.rawPrice - a.rawPrice;
-      else if (sortBy === "psa10") diff = b.psa10Price - a.psa10Price;
-      else if (sortBy === "profit") diff = profitB - profitA;
-      else diff = new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
-      return sortDir === "desc" ? diff : -diff;
-    });
-  }, [listItems, sortBy, sortDir, fees]);
+  const setStats = useMemo(() => {
+    if (cards.length === 0) return null;
+    const withPsa10 = cards.filter(c => c.psa10Price > 0);
+    const enriched = withPsa10.map(c => ({ ...c, ...calcProfit(c, fees) }));
+    const profitable = enriched.filter(e => e.profit > 0);
+    const avgRoi = enriched.length > 0 ? enriched.reduce((s, e) => s + e.roi, 0) / enriched.length : 0;
+    const bestCard = [...enriched].sort((a, b) => b.roi - a.roi)[0];
+    const withPsa9 = cards.filter(c => (c.psa9Price ?? 0) > 0);
+    const profitableP9 = withPsa9.map(c => ({ ...c, ...calcProfit(c, fees) })).filter(e => e.profit9 > 0);
+    return { withPsa10, profitable, avgRoi, bestCard, withPsa9, profitableP9 };
+  }, [cards, fees]);
 
   function exportToCSV() {
-    const headers = ["Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "PSA 9 Price", "Total Cost", "PSA 10 Profit", "PSA 10 ROI %", "PSA 9 Profit", "PSA 9 ROI %", "Added"];
-    const rows = sorted.map((item) => {
-      const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
-      const r9 = calcROI(item.psa9Price, item.rawPrice, fees);
-      return [
-        item.name, item.set, item.rarity, item.number,
-        item.rawPrice.toFixed(2), item.psa10Price.toFixed(2), item.psa9Price.toFixed(2),
-        r10.totalCosts.toFixed(2), r10.profit.toFixed(2), r10.roi.toFixed(1) + "%",
-        r9.profit.toFixed(2), r9.roi.toFixed(1) + "%",
-        new Date(item.addedAt).toLocaleDateString(),
-      ];
-    });
+    const headers = ["Rank", "Name", "Set", "Rarity", "Number", "Raw Price", "PSA 10 Price", "PSA 9 Price", "Total Cost", "Sale Proceeds", "Net Profit", "ROI %", "PSA 9 Profit", "PSA 9 ROI %", "Multiple", "Image URL"];
+    const rows = filtered.map((card, idx) => [
+      idx + 1, card.name, card.set, card.rarity, card.number,
+      card.rawPrice.toFixed(2), card.psa10Price.toFixed(2),
+      card.psa9Price > 0 ? card.psa9Price.toFixed(2) : "",
+      card.totalCosts.toFixed(2), card.saleProceeds.toFixed(2),
+      card.profit.toFixed(2), card.roi.toFixed(1) + "%",
+      card.psa9Price > 0 ? card.profit9.toFixed(2) : "",
+      card.psa9Price > 0 ? card.roi9.toFixed(1) + "%" : "",
+      (card.psa10Price / card.rawPrice).toFixed(2) + "x",
+      card.image ?? "",
+    ]);
     const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "watchlist.csv";
+    a.download = selectedSet + "-ROI.csv";
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  function SortHeader({ label, field }: { label: string; field: typeof sortBy }) {
+  function cardUrl(tcgPlayerId: string) {
+    return "/card/" + tcgPlayerId + "?from=" + encodeURIComponent("/leaderboard?" + searchParams.toString());
+  }
+
+  function SortTh({ label, field }: { label: string; field: typeof sortBy }) {
     const active = sortBy === field;
     return (
       <th
-        onClick={() => toggleSort(field)}
-        className={"text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none " + (active ? "text-yellow-400" : "text-zinc-400 hover:text-white")}
+        onClick={() => {
+          if (sortBy === field) handleSortDirChange();
+          else { handleSortByChange(field); setSortDir("desc"); }
+        }}
+        className={"text-right text-xs font-mono px-4 py-3 cursor-pointer transition-colors select-none " + (active ? "text-yellow-400" : "text-zinc-500 hover:text-white")}
       >
         {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
       </th>
     );
   }
 
-  const activeListName = activeListId === null ? mainListName : lists.find(l => l.id === activeListId)?.name ?? "Unknown";
-  const mainCount = items.filter(i => !i.watchlistId).length;
-
-  if (!mounted) return null;
-
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/3 w-96 h-96 bg-blue-400/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-yellow-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-yellow-400/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 left-1/4 w-64 h-64 bg-red-500/5 rounded-full blur-3xl" />
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
-      {showAddPicker && (
+      {pickerCard && (
         <WatchlistPicker
-          card={{ tcgPlayerId: "", name: "", set: "", rawPrice: 0, psa10Price: 0, psa9Price: 0, rarity: "", number: "", addedAt: new Date().toISOString() }}
-          onClose={() => setShowAddPicker(false)}
+          card={{
+            tcgPlayerId: pickerCard.tcgPlayerId,
+            name: pickerCard.name,
+            set: pickerCard.set,
+            image: pickerCard.image,
+            rawPrice: pickerCard.rawPrice,
+            psa10Price: pickerCard.psa10Price,
+            psa9Price: pickerCard.psa9Price ?? 0,
+            rarity: pickerCard.rarity,
+            number: pickerCard.number,
+            addedAt: new Date().toISOString(),
+          }}
+          onClose={() => setPickerCard(null)}
         />
       )}
 
-      {confirmDeleteList && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0d0d14] border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
-            <h2 className="text-lg font-black text-white">Delete Watchlist?</h2>
-            <p className="text-zinc-400 text-sm font-medium">
-              This will delete the list and all {items.filter(i => i.watchlistId === confirmDeleteList).length} cards in it. This cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteList(null)} className="flex-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">Cancel</button>
-              <button onClick={() => handleDeleteList(confirmDeleteList)} className="flex-1 bg-red-500 hover:bg-red-400 text-white font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">Delete List</button>
-            </div>
-          </div>
-        </div>
+      {showBulkPicker && (
+        <BulkWatchlistPicker
+          cards={filtered}
+          onClose={() => setShowBulkPicker(false)}
+        />
       )}
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
-        <div className="mb-6">
-          <Link href="/" className="text-zinc-400 hover:text-white text-sm font-semibold transition-colors">← Back to Home</Link>
+        <div className="mb-8">
+          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← Back to Home</Link>
           <h1 className="text-4xl font-black mt-2">
-            <span className="text-white">MY </span>
-            <span className="text-blue-400">WATCHLISTS</span>
+            <span className="text-white">TOP </span>
+            <span className="text-yellow-400">ROI</span>
+            <span className="text-white"> CARDS</span>
           </h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-zinc-400 text-sm font-medium">{items.length} cards across {lists.length + 1} lists</p>
-            <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">☁ Synced</span>
+          <p className="text-zinc-500 text-sm mt-1">Cards with the highest grading return by set — click row for details · ☆ to watchlist</p>
+        </div>
+
+        {/* Controls */}
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
+
+          <div className="flex-1 min-w-48">
+            <label className="block text-xs text-zinc-500 font-mono mb-1">SELECT SET</label>
+            <select
+              value={selectedSet}
+              onChange={(e) => handleSetChange(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
+              disabled={setsLoading}
+            >
+              <option value="">{setsLoading ? "Loading sets..." : "Choose a set..."}</option>
+              {sets.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">RARITY</label>
+            <select
+              value={rarityFilter}
+              onChange={(e) => handleRarityChange(e.target.value)}
+              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
+            >
+              {rarities.map((r) => <option key={r}>{r}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">SORT BY</label>
+            <div className="flex gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => handleSortByChange(e.target.value as typeof sortBy)}
+                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none"
+              >
+                <option value="roi">ROI % (PSA 10)</option>
+                <option value="profit">Net Profit (PSA 10)</option>
+                <option value="roi9">ROI % (PSA 9)</option>
+                <option value="profit9">Net Profit (PSA 9)</option>
+                <option value="psa10">PSA 10 Price</option>
+                <option value="raw">Raw Price</option>
+              </select>
+              <button
+                onClick={handleSortDirChange}
+                className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2.5 text-white text-sm transition-colors font-mono"
+              >
+                {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE ($)</label>
+            <div className="flex items-center gap-2">
+              <input type="number" value={minRaw} min={0} placeholder="Min"
+                onChange={(e) => handleMinRawChange(parseFloat(e.target.value) || 0)}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+              <span className="text-zinc-600 text-sm font-mono">—</span>
+              <input type="number" value={maxRaw === POS_INF ? "" : maxRaw} min={0} placeholder="Max"
+                onChange={(e) => handleMaxRawChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value) || POS_INF)}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">ROI % RANGE</label>
+            <div className="flex items-center gap-2">
+              <input type="number" value={minRoi === NEG_INF ? "" : minRoi} placeholder="Min %"
+                onChange={(e) => handleMinRoiChange(e.target.value === "" ? NEG_INF : parseFloat(e.target.value))}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+              <span className="text-zinc-600 text-sm font-mono">—</span>
+              <input type="number" value={maxRoi === POS_INF ? "" : maxRoi} placeholder="Max %"
+                onChange={(e) => handleMaxRoiChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value))}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-end gap-2 flex-wrap">
+            <button
+              onClick={resetFilters}
+              className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-white font-bold px-3 py-2.5 rounded-lg transition-colors text-xs font-mono whitespace-nowrap"
+            >
+              Reset Filters
+            </button>
+            <button
+              onClick={() => setShowBulkPicker(true)}
+              disabled={filtered.length === 0}
+              className="bg-blue-500 hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-bold px-4 py-2.5 rounded-lg transition-colors text-sm whitespace-nowrap"
+            >
+              ★ Add All to Watchlist
+            </button>
+            <button
+              onClick={exportToCSV}
+              disabled={filtered.length === 0}
+              className="bg-yellow-400 hover:bg-yellow-300 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm whitespace-nowrap"
+            >
+              Export CSV
+            </button>
           </div>
         </div>
 
-        {syncing && (
-          <div className="text-center py-8">
-            <div className="text-2xl mb-2 animate-spin inline-block">⟳</div>
-            <p className="text-zinc-400 font-semibold text-sm">Loading from cloud...</p>
+        {/* Set overview stats */}
+        {!loading && setStats && (
+          <div className="mb-6 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-white font-mono">{cards.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Total cards</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-yellow-400 font-mono">{setStats.withPsa10.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">With PSA 10 data</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-emerald-400 font-mono">{setStats.profitable.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Profitable to grade</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className={"text-2xl font-black font-mono " + (setStats.avgRoi >= 0 ? "text-emerald-400" : "text-red-400")}>
+                  {setStats.avgRoi >= 0 ? "+" : ""}{setStats.avgRoi.toFixed(0)}%
+                </p>
+                <p className="text-xs text-zinc-600 mt-0.5">Average ROI</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-blue-400 font-mono">{setStats.withPsa9.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">With PSA 9 data</p>
+              </div>
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+                <p className="text-2xl font-black text-emerald-400 font-mono">{setStats.profitableP9.length}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Profitable at PSA 9</p>
+              </div>
+            </div>
+
+            {setStats.bestCard && (
+              <div
+                onClick={() => router.push(cardUrl(setStats.bestCard.tcgPlayerId))}
+                className="bg-yellow-400/5 border border-yellow-400/10 hover:border-yellow-400/30 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-colors"
+              >
+                {setStats.bestCard.image && (
+                  <img src={setStats.bestCard.image} alt={setStats.bestCard.name} className="w-12 rounded flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-zinc-500 font-mono mb-0.5">Best ROI card in set</p>
+                  <p className="text-sm font-bold text-white truncate">{setStats.bestCard.name}</p>
+                  <p className="text-xs text-zinc-600">{setStats.bestCard.rarity} · #{setStats.bestCard.number}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xl font-black text-emerald-400 font-mono">+{setStats.bestCard.roi.toFixed(0)}%</p>
+                  <p className="text-xs text-emerald-400 font-mono">+${setStats.bestCard.profit.toFixed(2)} profit</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">PSA 10: ${setStats.bestCard.psa10Price.toFixed(2)}</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {!syncing && (
-          <div className="space-y-6">
+        {loading && (
+          <div className="text-center py-20">
+            <div className="text-4xl mb-4 animate-spin inline-block">⚡</div>
+            <p className="text-zinc-500 font-mono text-sm">Fetching all cards in set...</p>
+          </div>
+        )}
 
-            {/* List tabs + create */}
-            <div className="flex flex-wrap gap-1 items-center">
+        {error && (
+          <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{error}</div>
+        )}
 
-              {/* Main watchlist tab */}
-              <div className="relative group">
-                {editingListId === "main" ? (
-                  <div className="flex gap-1 items-center">
-                    <input
-                      autoFocus
-                      value={editingListName}
-                      onChange={(e) => setEditingListName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleRenameMain();
-                        if (e.key === "Escape") { setEditingListId(null); setEditingListName(""); }
-                      }}
-                      className="bg-zinc-800 border border-blue-500/40 rounded-lg px-3 py-2 text-white text-sm outline-none w-36"
-                    />
-                    <button onClick={handleRenameMain} className="text-xs bg-blue-500 hover:bg-blue-400 text-white font-bold px-2 py-2 rounded-lg transition-colors">✓</button>
-                    <button onClick={() => { setEditingListId(null); setEditingListName(""); }} className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white font-bold px-2 py-2 rounded-lg transition-colors">✕</button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <button
-                      onClick={() => setActiveListId(null)}
-                      className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors pr-10 " +
-                        (activeListId === null ? "bg-blue-500/20 border-blue-500/40 text-blue-300" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
-                    >
-                      ★ {mainListName} ({mainCount})
-                    </button>
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditingListId("main"); setEditingListName(mainListName); }}
-                        className="w-6 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 transition-colors text-xs"
-                        title="Rename list"
-                      >
-                        ✎
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+        {!loading && !selectedSet && (
+          <div className="text-center py-20">
+            <div className="text-5xl mb-4">🏆</div>
+            <p className="text-zinc-600 font-mono text-sm mb-2">Select a set above to see the top ROI cards</p>
+            <p className="text-zinc-700 text-xs">Cards are loaded on demand to conserve API credits</p>
+          </div>
+        )}
 
-              {/* Custom list tabs */}
-              {lists.map((list) => {
-                const count = items.filter(i => i.watchlistId === list.id).length;
-                return (
-                  <div key={list.id} className="relative group">
-                    {editingListId === list.id ? (
-                      <div className="flex gap-1 items-center">
-                        <input
-                          autoFocus
-                          value={editingListName}
-                          onChange={(e) => setEditingListName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleRenameList();
-                            if (e.key === "Escape") { setEditingListId(null); setEditingListName(""); }
-                          }}
-                          className="bg-zinc-800 border border-blue-500/40 rounded-lg px-3 py-2 text-white text-sm outline-none w-36"
-                        />
-                        <button onClick={handleRenameList} className="text-xs bg-blue-500 hover:bg-blue-400 text-white font-bold px-2 py-2 rounded-lg transition-colors">✓</button>
-                        <button onClick={() => { setEditingListId(null); setEditingListName(""); }} className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white font-bold px-2 py-2 rounded-lg transition-colors">✕</button>
-                      </div>
-                    ) : (
-                      <div className="relative">
-                        <button
-                          onClick={() => setActiveListId(list.id)}
-                          className={"px-4 py-2 rounded-lg border text-sm font-bold transition-colors pr-14 " +
-                            (activeListId === list.id ? "bg-blue-500/20 border-blue-500/40 text-blue-300" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500")}
+        {!loading && selectedSet && filtered.length === 0 && cards.length > 0 && (
+          <div className="text-center py-20">
+            <p className="text-zinc-500 font-mono text-sm">No cards match your current filters.</p>
+            <button onClick={resetFilters} className="mt-3 text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors">
+              Reset all filters →
+            </button>
+          </div>
+        )}
+
+        {/* Table */}
+        {filtered.length > 0 && (
+          <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <div className="max-h-[72vh] overflow-y-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0 z-10 bg-[#0d0d14] border-b border-zinc-800">
+                    <tr>
+                      <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8">#</th>
+                      <th className="text-left text-xs text-zinc-500 font-mono px-2 py-3 w-8"></th>
+                      <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
+                      <SortTh label="RAW" field="raw" />
+                      <SortTh label="PSA 10" field="psa10" />
+                      <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">PSA 9</th>
+                      <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">COST</th>
+                      <SortTh label="P10 PROFIT" field="profit" />
+                      <SortTh label="P10 ROI" field="roi" />
+                      <SortTh label="P9 PROFIT" field="profit9" />
+                      <SortTh label="P9 ROI" field="roi9" />
+                      <th className="text-right text-xs text-zinc-500 font-mono px-4 py-3">MULT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleCards.map((card, idx) => {
+                      const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
+                      const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
+                      const watched = isWatched(card.tcgPlayerId);
+                      return (
+                        <tr
+                          key={card.id}
+                          onClick={() => router.push(cardUrl(card.tcgPlayerId))}
+                          className={"border-b border-zinc-800/50 transition-colors cursor-pointer " + (idx % 2 === 0 ? "bg-transparent hover:bg-zinc-800/50" : "bg-zinc-800/20 hover:bg-zinc-800/50")}
                         >
-                          📋 {list.name} ({count})
-                        </button>
-                        <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setEditingListId(list.id); setEditingListName(list.name); }}
-                            className="w-6 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 transition-colors text-xs"
-                            title="Rename list"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteList(list.id); }}
-                            className="w-6 h-6 flex items-center justify-center rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors text-xs"
-                            title="Delete list"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                          <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
+                          <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
+                            <button
+                              className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
+                                (watched ? "bg-blue-500 text-white hover:bg-red-500" : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
+                              title={watched ? "Remove from watchlist" : "Add to watchlist"}
+                            >
+                              {watched ? "★" : "☆"}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              {card.image && <img src={card.image} alt={card.name} className="w-10 rounded" />}
+                              <div>
+                                <p className="text-sm font-semibold text-white">{card.name}</p>
+                                <p className="text-xs text-zinc-600">{card.rarity} · #{card.number}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">${card.rawPrice.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">${card.psa10Price.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">{card.psa9Price > 0 ? "$" + card.psa9Price.toFixed(2) : "—"}</td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.totalCosts.toFixed(2)}</td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}</td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%</td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
+                            {card.psa9Price > 0 ? (card.profit9 >= 0 ? "+" : "") + "$" + card.profit9.toFixed(2) : "—"}
+                          </td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
+                            {card.psa9Price > 0 ? (card.roi9 >= 0 ? "+" : "") + card.roi9.toFixed(0) + "%" : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">{(card.psa10Price / card.rawPrice).toFixed(1)}x</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-              {/* Create new list */}
-              <div className="flex gap-1 items-center ml-2">
-                <input
-                  value={newListName}
-                  onChange={(e) => setNewListName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleCreateList(); }}
-                  placeholder="New list name..."
-                  className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-white text-sm outline-none placeholder-zinc-500 w-36"
-                />
-                <button
-                  onClick={handleCreateList}
-                  disabled={creatingList || !newListName.trim()}
-                  className="bg-yellow-400 hover:bg-yellow-300 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-bold px-3 py-2 rounded-lg transition-colors text-sm whitespace-nowrap"
-                >
-                  {creatingList ? "..." : "+ Create"}
+            <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between gap-4 flex-wrap">
+              <span className="text-xs text-zinc-600 font-mono">
+                Showing {visibleCards.length} of {filtered.length} cards
+                {!showAll && filtered.length > 10 && (
+                  <span className="text-zinc-700"> · top 10 by {sortBy === "roi" ? "ROI" : sortBy === "profit" ? "profit" : sortBy === "roi9" ? "PSA 9 ROI" : sortBy === "profit9" ? "PSA 9 profit" : sortBy === "psa10" ? "PSA 10 price" : "raw price"}</span>
+                )}
+              </span>
+              <div className="flex items-center gap-3">
+                {filtered.length > 10 && (
+                  <button
+                    onClick={() => setShowAll(!showAll)}
+                    className={"text-sm font-mono font-bold px-4 py-1.5 rounded-lg border transition-colors " +
+                      (showAll ? "border-zinc-600 text-zinc-400 hover:text-white" : "border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20")}
+                  >
+                    {showAll ? "↑ Show top 10" : "↓ Show all " + filtered.length + " cards"}
+                  </button>
+                )}
+                <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs">
+                  Export CSV
                 </button>
               </div>
             </div>
-
-            {/* Active list header + controls */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h2 className="text-xl font-black text-white">{activeListName}</h2>
-                <p className="text-sm text-zinc-400 font-medium">{sorted.length} cards</p>
-              </div>
-
-              {sorted.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1 bg-zinc-800 border border-zinc-600 rounded-lg p-1">
-                    <button
-                      onClick={() => setViewMode("table")}
-                      className={"px-3 py-1.5 rounded-md text-sm font-bold transition-colors " + (viewMode === "table" ? "bg-zinc-600 text-white" : "text-zinc-500 hover:text-white")}
-                    >
-                      ☰ List
-                    </button>
-                    <button
-                      onClick={() => setViewMode("grid")}
-                      className={"px-3 py-1.5 rounded-md text-sm font-bold transition-colors " + (viewMode === "grid" ? "bg-zinc-600 text-white" : "text-zinc-500 hover:text-white")}
-                    >
-                      ⊞ Grid
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-zinc-400 font-semibold">SORT</label>
-                    <select
-                      value={sortBy}
-                      onChange={(e) => { setSortBy(e.target.value as typeof sortBy); setSortDir("desc"); }}
-                      className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-white text-sm outline-none"
-                    >
-                      <option value="roi">ROI %</option>
-                      <option value="profit">Net Profit</option>
-                      <option value="raw">Raw Price</option>
-                      <option value="psa10">PSA 10 Price</option>
-                      <option value="added">Date Added</option>
-                    </select>
-                    <button
-                      onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
-                      className="bg-zinc-800 border border-zinc-600 hover:border-zinc-500 rounded-lg px-3 py-2 text-white text-sm transition-colors font-mono"
-                    >
-                      {sortDir === "desc" ? "↓" : "↑"}
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={handleRefreshAll}
-                    disabled={refreshing}
-                    className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-600 border border-zinc-600 text-zinc-300 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
-                  >
-                    {refreshing ? <><span className="animate-spin inline-block">⟳</span> {refreshProgress}/{listItems.length}</> : <>⟳ Refresh</>}
-                  </button>
-
-                  <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-2 rounded-lg transition-colors text-sm">
-                    Export CSV
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Stats */}
-            {sorted.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {(() => {
-                  const profitable = sorted.filter(i => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
-                  const totalProfit = sorted.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).profit, 0);
-                  const avgRoi = sorted.length > 0 ? sorted.reduce((s, i) => s + calcROI(i.psa10Price, i.rawPrice, fees).roi, 0) / sorted.length : 0;
-                  return (
-                    <>
-                      <div className="bg-zinc-900/60 border border-zinc-700 rounded-xl p-4 text-center">
-                        <p className="text-2xl font-black text-white font-mono">{sorted.length}</p>
-                        <p className="text-sm text-zinc-400 mt-1 font-medium">Cards watching</p>
-                      </div>
-                      <div className="bg-zinc-900/60 border border-zinc-700 rounded-xl p-4 text-center">
-                        <p className="text-2xl font-black text-emerald-400 font-mono">{profitable.length}</p>
-                        <p className="text-sm text-zinc-400 mt-1 font-medium">Profitable to grade</p>
-                      </div>
-                      <div className="bg-zinc-900/60 border border-zinc-700 rounded-xl p-4 text-center">
-                        <p className={"text-2xl font-black font-mono " + (totalProfit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                          {totalProfit >= 0 ? "+" : ""}${totalProfit.toFixed(0)}
-                        </p>
-                        <p className="text-sm text-zinc-400 mt-1 font-medium">Total potential profit</p>
-                      </div>
-                      <div className="bg-zinc-900/60 border border-zinc-700 rounded-xl p-4 text-center">
-                        <p className={"text-2xl font-black font-mono " + (avgRoi >= 0 ? "text-yellow-400" : "text-red-400")}>
-                          {avgRoi >= 0 ? "+" : ""}{avgRoi.toFixed(0)}%
-                        </p>
-                        <p className="text-sm text-zinc-400 mt-1 font-medium">Average ROI</p>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Empty state */}
-            {sorted.length === 0 && (
-              <div className="text-center py-20">
-                <div className="text-5xl mb-4">👀</div>
-                <p className="text-zinc-400 font-bold text-base mb-2">{activeListName} is empty</p>
-                <p className="text-zinc-600 text-sm mb-6">Search for cards and use the star icon to add them to this list</p>
-                <Link href="/" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
-                  Search Cards
-                </Link>
-              </div>
-            )}
-
-            {lastRefreshed && (
-              <p className="text-xs text-zinc-600 font-mono">Prices last refreshed at {lastRefreshed.toLocaleTimeString()}</p>
-            )}
-
-            {/* Table view */}
-            {sorted.length > 0 && viewMode === "table" && (
-              <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left text-xs text-zinc-400 font-mono px-4 py-3 w-8"></th>
-                        <th className="text-left text-xs text-zinc-400 font-mono px-4 py-3">CARD</th>
-                        <SortHeader label="RAW" field="raw" />
-                        <SortHeader label="PSA 10" field="psa10" />
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">PSA 9</th>
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">TOTAL COST</th>
-                        <SortHeader label="P10 PROFIT" field="profit" />
-                        <SortHeader label="P10 ROI" field="roi" />
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">P9 PROFIT</th>
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">P9 ROI</th>
-                        <SortHeader label="ADDED" field="added" />
-                        <th className="px-4 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map((item: WatchlistItem) => {
-                        const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
-                        const r9 = calcROI(item.psa9Price, item.rawPrice, fees);
-                        const hasPsa9 = item.psa9Price > 0;
-                        const roi10Color = r10.roi > 50 ? "text-emerald-400" : r10.roi > 0 ? "text-yellow-400" : "text-red-400";
-                        const roi9Color = r9.roi > 50 ? "text-emerald-400" : r9.roi > 0 ? "text-yellow-400" : "text-red-400";
-                        const isExpanded = expandedId === item.tcgPlayerId;
-                        return (
-                          <>
-                            <tr key={item.tcgPlayerId} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                              <td className="px-4 py-3">
-                                <button onClick={() => setExpandedId(isExpanded ? null : item.tcgPlayerId)} className="text-zinc-500 hover:text-white transition-colors text-sm font-mono w-5">
-                                  {isExpanded ? "▼" : "▶"}
-                                </button>
-                              </td>
-                              <td className="px-4 py-3 cursor-pointer" onClick={() => router.push(cardUrl(item.tcgPlayerId))}>
-                                <div className="flex items-center gap-3">
-                                  {item.image && <img src={item.image} alt={item.name} className="w-10 rounded" />}
-                                  <div>
-                                    <p className="text-sm font-bold text-white">{item.name}</p>
-                                    <p className="text-xs text-zinc-500">{item.set} · {item.rarity} · #{item.number}</p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">{item.rawPrice > 0 ? "$" + item.rawPrice.toFixed(2) : "N/A"}</td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">{hasPsa9 ? "$" + item.psa9Price.toFixed(2) : "N/A"}</td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${r10.totalCosts.toFixed(2)}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.profit >= 0 ? "+" : "") + "$" + r10.profit.toFixed(2) : "N/A"}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.roi >= 0 ? "+" : "") + r10.roi.toFixed(0) + "%" : "N/A"}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.profit >= 0 ? "+" : "") + "$" + r9.profit.toFixed(2) : "N/A"}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.roi >= 0 ? "+" : "") + r9.roi.toFixed(0) + "%" : "N/A"}</td>
-                              <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">{new Date(item.addedAt).toLocaleDateString()}</td>
-                              <td className="px-4 py-3 text-right">
-                                <button onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }} className="text-zinc-600 hover:text-red-400 transition-colors text-lg">×</button>
-                              </td>
-                            </tr>
-                            {isExpanded && (
-                              <tr key={item.tcgPlayerId + "-exp"} className="border-b border-zinc-800">
-                                <td colSpan={12} className="px-4 py-4 bg-zinc-900/40">
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {item.psa10Price > 0 && (
-                                      <div className="bg-yellow-400/5 border border-yellow-400/10 rounded-xl p-4 space-y-2">
-                                        <div className="flex justify-between items-center">
-                                          <p className="text-sm font-black text-yellow-400">PSA 10 — Gem Mint</p>
-                                          <p className="text-lg font-black text-yellow-400 font-mono">${item.psa10Price.toFixed(2)}</p>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">Total cost</p><p className="text-white font-bold">${r10.totalCosts.toFixed(2)}</p></div>
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">Proceeds</p><p className="text-white font-bold">${r10.saleProceeds.toFixed(2)}</p></div>
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">Profit</p><p className={"font-bold " + (r10.profit >= 0 ? "text-emerald-400" : "text-red-400")}>{r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)}</p></div>
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">ROI</p><p className={"font-bold " + (r10.roi >= 0 ? "text-emerald-400" : "text-red-400")}>{r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%</p></div>
-                                        </div>
-                                        <p className="text-xs font-mono text-zinc-500">Break-even: ${r10.breakEven.toFixed(2)}</p>
-                                      </div>
-                                    )}
-                                    {hasPsa9 && (
-                                      <div className="bg-blue-400/5 border border-blue-400/10 rounded-xl p-4 space-y-2">
-                                        <div className="flex justify-between items-center">
-                                          <p className="text-sm font-black text-blue-400">PSA 9 — Mint</p>
-                                          <p className="text-lg font-black text-blue-400 font-mono">${item.psa9Price.toFixed(2)}</p>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">Total cost</p><p className="text-white font-bold">${r9.totalCosts.toFixed(2)}</p></div>
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">Proceeds</p><p className="text-white font-bold">${r9.saleProceeds.toFixed(2)}</p></div>
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">Profit</p><p className={"font-bold " + (r9.profit >= 0 ? "text-emerald-400" : "text-red-400")}>{r9.profit >= 0 ? "+" : ""}${r9.profit.toFixed(2)}</p></div>
-                                          <div className="bg-zinc-800/40 rounded-lg p-2"><p className="text-zinc-500">ROI</p><p className={"font-bold " + (r9.roi >= 0 ? "text-emerald-400" : "text-red-400")}>{r9.roi >= 0 ? "+" : ""}{r9.roi.toFixed(0)}%</p></div>
-                                        </div>
-                                        <p className="text-xs font-mono text-zinc-500">Break-even: ${r9.breakEven.toFixed(2)}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                  {item.psa10Price > 0 && hasPsa9 && (
-                                    <div className="mt-3 bg-zinc-800/40 border border-zinc-700 rounded-xl p-3">
-                                      <p className="text-xs font-mono text-zinc-500 mb-1">Verdict</p>
-                                      {(() => {
-                                        const diff = r10.profit - r9.profit;
-                                        const bp = r10.profit > 0 && r9.profit > 0;
-                                        const np = r10.profit <= 0 && r9.profit <= 0;
-                                        return (
-                                          <p className="text-sm font-bold text-white">
-                                            {np ? "Neither grade is profitable at current prices"
-                                              : !bp && r10.profit > 0 ? "Only profitable if you hit PSA 10 — PSA 9 is a loss"
-                                              : !bp && r9.profit > 0 ? "Even a PSA 9 is profitable on this card"
-                                              : diff > 20 ? "PSA 10 worth chasing — $" + diff.toFixed(2) + " more than a 9"
-                                              : "PSA 9 nearly as good — only $" + diff.toFixed(2) + " less than a 10"}
-                                          </p>
-                                        );
-                                      })()}
-                                    </div>
-                                  )}
-                                  <button onClick={() => router.push(cardUrl(item.tcgPlayerId))} className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors font-mono">
-                                    View full detail & price history →
-                                  </button>
-                                </td>
-                              </tr>
-                            )}
-                          </>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="px-4 py-3 border-t border-zinc-700 flex items-center justify-between">
-                  <span className="text-sm text-zinc-400 font-medium">{sorted.length} cards · click ▶ to expand{lastRefreshed && " · refreshed " + lastRefreshed.toLocaleTimeString()}</span>
-                  <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs">Export CSV</button>
-                </div>
-              </div>
-            )}
-
-            {/* Grid view */}
-            {sorted.length > 0 && viewMode === "grid" && (
-              <div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                  {sorted.map((item: WatchlistItem) => {
-                    const r10 = calcROI(item.psa10Price, item.rawPrice, fees);
-                    const roi10Color = r10.roi > 50 ? "text-emerald-400" : r10.roi > 0 ? "text-yellow-400" : "text-red-400";
-                    return (
-                      <div
-                        key={item.tcgPlayerId}
-                        className="group relative bg-zinc-900/60 border border-zinc-700 hover:border-zinc-500 rounded-xl p-3 transition-all hover:scale-[1.02] cursor-pointer"
-                        onClick={() => router.push(cardUrl(item.tcgPlayerId))}
-                      >
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }}
-                          className="absolute top-2 left-2 w-6 h-6 flex items-center justify-center rounded-full bg-zinc-800/80 text-zinc-500 hover:bg-red-500/80 hover:text-white transition-all z-10 text-xs opacity-0 group-hover:opacity-100"
-                        >
-                          ×
-                        </button>
-                        <div className={"absolute top-2 right-2 text-xs font-black font-mono px-1.5 py-0.5 rounded-md z-10 " +
-                          (r10.roi > 50 ? "bg-emerald-500/20 text-emerald-400" : r10.roi > 0 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400")}>
-                          {r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%
-                        </div>
-                        {item.image && <img src={item.image} alt={item.name} className="w-full rounded-lg mb-2 mt-1" />}
-                        <p className="text-sm font-bold text-white truncate">{item.name}</p>
-                        <p className="text-xs text-zinc-500 truncate mb-1">{item.set}</p>
-                        <div className="flex items-center justify-between mt-1">
-                          <div>
-                            <p className="text-xs text-zinc-600 font-mono">Raw</p>
-                            <p className="text-xs text-zinc-300 font-mono font-bold">${item.rawPrice.toFixed(2)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs text-zinc-600 font-mono">PSA 10</p>
-                            <p className="text-xs text-yellow-400 font-mono font-bold">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</p>
-                          </div>
-                        </div>
-                        <div className={"mt-1.5 text-xs font-mono font-bold text-center py-1 rounded-lg " + (r10.profit >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>
-                          {r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)} profit
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-sm text-zinc-400 font-medium">{sorted.length} cards</span>
-                  <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs">Export CSV</button>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+export default function Leaderboard() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-zinc-500 font-mono text-sm">Loading...</div>
+      </div>
+    }>
+      <LeaderboardInner />
+    </Suspense>
   );
 }
