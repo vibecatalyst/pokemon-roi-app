@@ -106,32 +106,16 @@ function SubmitModal({ card, fees, onClose, onSubmit }: SubmitModalProps) {
 
         {rawPrice > 0 && psa10Price > 0 && (
           <div className="bg-zinc-800/40 rounded-xl p-3 grid grid-cols-2 gap-2 text-xs font-mono">
-            <div>
-              <p className="text-zinc-600">Total cost</p>
-              <p className="text-white font-bold">${totalCost.toFixed(2)}</p>
-            </div>
-            <div>
-              <p className="text-zinc-600">Proceeds (PSA 10)</p>
-              <p className="text-white font-bold">${proceeds.toFixed(2)}</p>
-            </div>
-            <div>
-              <p className="text-zinc-600">Expected profit</p>
-              <p className={"font-bold " + profitColor}>{profit >= 0 ? "+" : ""}${profit.toFixed(2)}</p>
-            </div>
-            <div>
-              <p className="text-zinc-600">Expected ROI</p>
-              <p className={"font-bold " + profitColor}>{roi >= 0 ? "+" : ""}{roi.toFixed(0)}%</p>
-            </div>
+            <div><p className="text-zinc-600">Total cost</p><p className="text-white font-bold">${totalCost.toFixed(2)}</p></div>
+            <div><p className="text-zinc-600">Proceeds (PSA 10)</p><p className="text-white font-bold">${proceeds.toFixed(2)}</p></div>
+            <div><p className="text-zinc-600">Expected profit</p><p className={"font-bold " + profitColor}>{profit >= 0 ? "+" : ""}${profit.toFixed(2)}</p></div>
+            <div><p className="text-zinc-600">Expected ROI</p><p className={"font-bold " + profitColor}>{roi >= 0 ? "+" : ""}{roi.toFixed(0)}%</p></div>
           </div>
         )}
 
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">
-            Cancel
-          </button>
-          <button onClick={handleSubmit} className="flex-1 bg-orange-400 hover:bg-orange-300 text-black font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">
-            Add to Tracker
-          </button>
+          <button onClick={onClose} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">Cancel</button>
+          <button onClick={handleSubmit} className="flex-1 bg-orange-400 hover:bg-orange-300 text-black font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">Add to Tracker</button>
         </div>
       </div>
     </div>
@@ -155,6 +139,7 @@ function CardDetailInner() {
   const [error, setError] = useState("");
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showWatchlistPicker, setShowWatchlistPicker] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
@@ -211,6 +196,29 @@ function CardDetailInner() {
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
+      {/* Image zoom modal */}
+      {showImageModal && card?.image && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setShowImageModal(false)}
+        >
+          <div className="relative max-w-lg w-full">
+            <img
+              src={card.image}
+              alt={card.name}
+              className="w-full rounded-2xl shadow-2xl ring-1 ring-zinc-700"
+            />
+            <p className="text-center text-zinc-400 text-sm mt-3 font-medium">{card.name}</p>
+            <button
+              onClick={() => setShowImageModal(false)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center text-zinc-400 hover:text-white transition-colors text-sm"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {showWatchlistPicker && card && (
         <WatchlistPicker
           card={{
@@ -261,28 +269,19 @@ function CardDetailInner() {
             )}
 
             {card && (
-              <button
-                onClick={openPsaPop}
-                className="text-sm px-3 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-400 transition-colors font-semibold"
-              >
+              <button onClick={openPsaPop} className="text-sm px-3 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-400 transition-colors font-semibold">
                 PSA Pop
               </button>
             )}
 
             {card && (
-              <button
-                onClick={openTcgPlayer}
-                className="text-sm px-3 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-400 transition-colors font-semibold"
-              >
+              <button onClick={openTcgPlayer} className="text-sm px-3 py-2 rounded-lg border border-zinc-600 text-zinc-300 hover:text-white hover:border-zinc-400 transition-colors font-semibold">
                 TCGPlayer
               </button>
             )}
 
             {card && (
-              <button
-                onClick={() => setShowSubmitModal(true)}
-                className="text-sm px-3 py-2 rounded-lg border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:border-orange-500/60 transition-colors font-semibold"
-              >
+              <button onClick={() => setShowSubmitModal(true)} className="text-sm px-3 py-2 rounded-lg border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:border-orange-500/60 transition-colors font-semibold">
                 + Submit to PSA
               </button>
             )}
@@ -291,9 +290,7 @@ function CardDetailInner() {
               <button
                 onClick={toggleWatchlist}
                 className={"px-4 py-2 rounded-lg border text-sm font-semibold transition-colors " +
-                  (watched
-                    ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
-                    : "bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-blue-500/40 hover:text-blue-300")}
+                  (watched ? "bg-blue-500/20 border-blue-500/40 text-blue-300" : "bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-blue-500/40 hover:text-blue-300")}
               >
                 {watched ? "★ Watching" : "☆ Watchlist"}
               </button>
@@ -316,7 +313,7 @@ function CardDetailInner() {
 
         {card && (
           <div className="space-y-6">
-            <CardResult card={card} fees={fees} />
+            <CardResult card={card} fees={fees} onImageClick={() => setShowImageModal(true)} />
             <PriceChart priceHistory={priceHistory} rawPrice={card.rawPrice} cardName={card.name} />
           </div>
         )}

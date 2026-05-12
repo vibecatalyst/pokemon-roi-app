@@ -5,6 +5,7 @@ import { CardData, FeeSettings } from "@/lib/types";
 interface Props {
   card: CardData;
   fees: FeeSettings;
+  onImageClick?: () => void;
 }
 
 function calcROI(salePrice: number, rawPrice: number, fees: FeeSettings) {
@@ -31,7 +32,7 @@ function StatBox({ label, value, sub, highlight }: {
   );
 }
 
-export default function CardResult({ card, fees }: Props) {
+export default function CardResult({ card, fees, onImageClick }: Props) {
   const psa10 = card.psa10Price > 0 ? calcROI(card.psa10Price, card.rawPrice, fees) : null;
   const psa9Price = card.psa9Price ?? 0;
   const psa9 = psa9Price > 0 ? calcROI(psa9Price, card.rawPrice, fees) : null;
@@ -49,8 +50,12 @@ export default function CardResult({ card, fees }: Props) {
               <img
                 src={card.image}
                 alt={card.name}
-                className="w-48 sm:w-56 rounded-xl shadow-2xl shadow-black/50 ring-1 ring-zinc-700"
+                onClick={onImageClick}
+                className={"w-48 sm:w-56 rounded-xl shadow-2xl shadow-black/50 ring-1 ring-zinc-700 transition-transform hover:scale-[1.03] " + (onImageClick ? "cursor-zoom-in" : "")}
               />
+              {onImageClick && (
+                <p className="text-center text-xs text-zinc-600 mt-2 font-mono">click to enlarge</p>
+              )}
             </div>
           )}
 
