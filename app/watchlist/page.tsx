@@ -34,7 +34,7 @@ export default function Watchlist() {
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [editingListName, setEditingListName] = useState("");
   const [mainListName, setMainListName] = useState("Main");
-  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  const [viewMode, setViewMode] = useState<"table" | "grid">("grid");
   const { fees } = useFees();
   const router = useRouter();
 
