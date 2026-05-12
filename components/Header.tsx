@@ -340,7 +340,7 @@ export default function Header() {
 
                 <div className="flex flex-col gap-2 self-end">
                   <button
-                    onClick={() => { setPsaTier("Value"); setFees({ gradingFee: 32.99, shippingToGrader: 8, shippingBack: 8, ebayFeePercent: 13.25, buyingFeePercent: 0 }); }}
+                    onClick={() => { setPsaTier("Value Bulk"); setFees({ gradingFee: 24.99, shippingToGrader: 10, shippingBack: 0, ebayFeePercent: 13.25, buyingFeePercent: 0 }); }}
                     className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors font-semibold underline"
                   >
                     Reset to defaults

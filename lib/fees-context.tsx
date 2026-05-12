@@ -4,9 +4,9 @@ import { createContext, useContext, useState, ReactNode } from "react";
 import { FeeSettings } from "@/lib/types";
 
 export const DEFAULT_FEES: FeeSettings = {
-  gradingFee: 32.99,
-  shippingToGrader: 8,
-  shippingBack: 8,
+  gradingFee: 24.99,
+  shippingToGrader: 10,
+  shippingBack: 0,
   ebayFeePercent: 13.25,
   buyingFeePercent: 0,
 };
@@ -38,7 +38,7 @@ const FeesContext = createContext<FeesContextType>({
 
 export function FeesProvider({ children }: { children: ReactNode }) {
   const [fees, setFees] = useState<FeeSettings>(DEFAULT_FEES);
-  const [psaTier, setPsaTierState] = useState("Value");
+  const [psaTier, setPsaTierState] = useState("Value Bulk");
 
   function setPsaTier(tier: string) {
     const found = PSA_TIERS.find(t => t.label === tier);
