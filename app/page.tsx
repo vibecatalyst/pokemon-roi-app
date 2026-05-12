@@ -8,6 +8,7 @@ import { searchCards } from "@/lib/api";
 import { useWatchlist } from "@/lib/watchlist-context";
 import { getSubmissions, Submission } from "@/lib/submissions";
 import { useFees } from "@/lib/fees-context";
+import WatchlistPicker from "@/components/WatchlistPicker";
 import Link from "next/link";
 
 function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFees>["fees"]) {
@@ -44,7 +45,8 @@ function HomeInner() {
   const [lastQuery, setLastQuery] = useState("");
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [mounted, setMounted] = useState(false);
-  const { items: watchlist, loading: watchlistLoading, addItem, removeItem, isWatched } = useWatchlist();
+  const [pickerCard, setPickerCard] = useState<CardData | null>(null);
+  const { items: watchlist, loading: watchlistLoading, removeItem, isWatched } = useWatchlist();
   const { fees } = useFees();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -105,6 +107,24 @@ function HomeInner() {
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
+      {pickerCard && (
+        <WatchlistPicker
+          card={{
+            tcgPlayerId: pickerCard.tcgPlayerId,
+            name: pickerCard.name,
+            set: pickerCard.set,
+            image: pickerCard.image,
+            rawPrice: pickerCard.rawPrice,
+            psa10Price: pickerCard.psa10Price,
+            psa9Price: pickerCard.psa9Price ?? 0,
+            rarity: pickerCard.rarity,
+            number: pickerCard.number,
+            addedAt: new Date().toISOString(),
+          }}
+          onClose={() => setPickerCard(null)}
+        />
+      )}
+
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
 
         {/* Hero */}
@@ -163,24 +183,11 @@ function HomeInner() {
                         if (watched) {
                           await removeItem(card.tcgPlayerId);
                         } else {
-                          await addItem({
-                            tcgPlayerId: card.tcgPlayerId,
-                            name: card.name,
-                            set: card.set,
-                            image: card.image,
-                            rawPrice: card.rawPrice,
-                            psa10Price: card.psa10Price,
-                            psa9Price: card.psa9Price ?? 0,
-                            rarity: card.rarity,
-                            number: card.number,
-                            addedAt: new Date().toISOString(),
-                          });
+                          setPickerCard(card);
                         }
                       }}
                       className={"absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold transition-all z-10 " +
-                        (watched
-                          ? "bg-blue-500 text-white hover:bg-red-500"
-                          : "bg-zinc-800/80 text-zinc-400 hover:bg-blue-500 hover:text-white border border-zinc-600")}
+                        (watched ? "bg-blue-500 text-white hover:bg-red-500" : "bg-zinc-800/80 text-zinc-400 hover:bg-blue-500 hover:text-white border border-zinc-600")}
                     >
                       {watched ? "★" : "☆"}
                     </button>
@@ -285,12 +292,8 @@ function HomeInner() {
                               <p className="text-sm text-zinc-400 truncate font-medium">{card.set}</p>
                             </div>
                             <div className="text-right flex-shrink-0">
-                              <p className={"text-base font-black font-mono " + roiColor}>
-                                {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
-                              </p>
-                              <p className={"text-sm font-semibold font-mono " + roiColor}>
-                                {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
-                              </p>
+                              <p className={"text-base font-black font-mono " + roiColor}>{card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%</p>
+                              <p className={"text-sm font-semibold font-mono " + roiColor}>{card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}</p>
                             </div>
                           </div>
                         );

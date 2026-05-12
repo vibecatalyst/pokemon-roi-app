@@ -6,6 +6,7 @@ import { CardData } from "@/lib/types";
 import { mapApiCard } from "@/lib/api";
 import { useFees } from "@/lib/fees-context";
 import { useWatchlist } from "@/lib/watchlist-context";
+import WatchlistPicker from "@/components/WatchlistPicker";
 import Link from "next/link";
 
 function calcProfit(card: CardData, fees: ReturnType<typeof useFees>["fees"]) {
@@ -35,7 +36,7 @@ const POS_INF = 999999;
 
 function LeaderboardInner() {
   const { fees } = useFees();
-  const { items: watchlistItems, addItem, removeItem, isWatched } = useWatchlist();
+  const { isWatched, removeItem } = useWatchlist();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -55,6 +56,7 @@ function LeaderboardInner() {
   const [minRoi, setMinRoi] = useState(parseFloat(searchParams.get("minRoi") ?? "") || NEG_INF);
   const [maxRoi, setMaxRoi] = useState(parseFloat(searchParams.get("maxRoi") ?? "") || POS_INF);
   const [showAll, setShowAll] = useState(false);
+  const [pickerCard, setPickerCard] = useState<EnrichedCard | null>(null);
 
   function updateUrl(params: Record<string, string>) {
     const current = new URLSearchParams(searchParams.toString());
@@ -94,8 +96,7 @@ function LeaderboardInner() {
       const json = await res.json();
       if (json.error) { setError(json.message ?? json.error); return; }
       const raw = json.data ?? [];
-      const mapped = raw.map(mapApiCard);
-      setCards(mapped);
+      setCards(raw.map(mapApiCard));
     } catch {
       setError("Failed to fetch set data.");
     } finally {
@@ -170,18 +171,7 @@ function LeaderboardInner() {
     if (isWatched(card.tcgPlayerId)) {
       await removeItem(card.tcgPlayerId);
     } else {
-      await addItem({
-        tcgPlayerId: card.tcgPlayerId,
-        name: card.name,
-        set: card.set,
-        image: card.image,
-        rawPrice: card.rawPrice,
-        psa10Price: card.psa10Price,
-        psa9Price: card.psa9Price ?? 0,
-        rarity: card.rarity,
-        number: card.number,
-        addedAt: new Date().toISOString(),
-      });
+      setPickerCard(card);
     }
   }
 
@@ -272,6 +262,24 @@ function LeaderboardInner() {
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
+      {pickerCard && (
+        <WatchlistPicker
+          card={{
+            tcgPlayerId: pickerCard.tcgPlayerId,
+            name: pickerCard.name,
+            set: pickerCard.set,
+            image: pickerCard.image,
+            rawPrice: pickerCard.rawPrice,
+            psa10Price: pickerCard.psa10Price,
+            psa9Price: pickerCard.psa9Price ?? 0,
+            rarity: pickerCard.rarity,
+            number: pickerCard.number,
+            addedAt: new Date().toISOString(),
+          }}
+          onClose={() => setPickerCard(null)}
+        />
+      )}
+
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
         <div className="mb-8">
@@ -339,19 +347,13 @@ function LeaderboardInner() {
             <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE ($)</label>
             <div className="flex items-center gap-2">
               <input
-                type="number"
-                value={minRaw}
-                min={0}
-                placeholder="Min"
+                type="number" value={minRaw} min={0} placeholder="Min"
                 onChange={(e) => handleMinRawChange(parseFloat(e.target.value) || 0)}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
               <span className="text-zinc-600 text-sm font-mono">—</span>
               <input
-                type="number"
-                value={maxRaw === POS_INF ? "" : maxRaw}
-                min={0}
-                placeholder="Max"
+                type="number" value={maxRaw === POS_INF ? "" : maxRaw} min={0} placeholder="Max"
                 onChange={(e) => handleMaxRawChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value) || POS_INF)}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
@@ -362,17 +364,13 @@ function LeaderboardInner() {
             <label className="block text-xs text-zinc-500 font-mono mb-1">ROI % RANGE</label>
             <div className="flex items-center gap-2">
               <input
-                type="number"
-                value={minRoi === NEG_INF ? "" : minRoi}
-                placeholder="Min %"
+                type="number" value={minRoi === NEG_INF ? "" : minRoi} placeholder="Min %"
                 onChange={(e) => handleMinRoiChange(e.target.value === "" ? NEG_INF : parseFloat(e.target.value))}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
               <span className="text-zinc-600 text-sm font-mono">—</span>
               <input
-                type="number"
-                value={maxRoi === POS_INF ? "" : maxRoi}
-                placeholder="Max %"
+                type="number" value={maxRoi === POS_INF ? "" : maxRoi} placeholder="Max %"
                 onChange={(e) => handleMaxRoiChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value))}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
@@ -473,10 +471,7 @@ function LeaderboardInner() {
         {!loading && selectedSet && filtered.length === 0 && cards.length > 0 && (
           <div className="text-center py-20">
             <p className="text-zinc-500 font-mono text-sm">No cards match your current filters.</p>
-            <button
-              onClick={resetFilters}
-              className="mt-3 text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors"
-            >
+            <button onClick={resetFilters} className="mt-3 text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors">
               Reset all filters →
             </button>
           </div>
@@ -519,9 +514,7 @@ function LeaderboardInner() {
                           <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
                             <button
                               className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
-                                (watched
-                                  ? "bg-blue-500 text-white hover:bg-red-500"
-                                  : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
+                                (watched ? "bg-blue-500 text-white hover:bg-red-500" : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
                               title={watched ? "Remove from watchlist" : "Add to watchlist"}
                             >
                               {watched ? "★" : "☆"}
@@ -538,25 +531,17 @@ function LeaderboardInner() {
                           </td>
                           <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">${card.rawPrice.toFixed(2)}</td>
                           <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">${card.psa10Price.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">
-                            {card.psa9Price > 0 ? "$" + card.psa9Price.toFixed(2) : "—"}
-                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">{card.psa9Price > 0 ? "$" + card.psa9Price.toFixed(2) : "—"}</td>
                           <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${card.totalCosts.toFixed(2)}</td>
-                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                            {card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}
-                          </td>
-                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>
-                            {card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%
-                          </td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{card.profit >= 0 ? "+" : ""}${card.profit.toFixed(2)}</td>
+                          <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{card.roi >= 0 ? "+" : ""}{card.roi.toFixed(0)}%</td>
                           <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
                             {card.psa9Price > 0 ? (card.profit9 >= 0 ? "+" : "") + "$" + card.profit9.toFixed(2) : "—"}
                           </td>
                           <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (card.psa9Price > 0 ? roi9Color : "text-zinc-700")}>
                             {card.psa9Price > 0 ? (card.roi9 >= 0 ? "+" : "") + card.roi9.toFixed(0) + "%" : "—"}
                           </td>
-                          <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">
-                            {(card.psa10Price / card.rawPrice).toFixed(1)}x
-                          </td>
+                          <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">{(card.psa10Price / card.rawPrice).toFixed(1)}x</td>
                         </tr>
                       );
                     })}
@@ -577,17 +562,12 @@ function LeaderboardInner() {
                   <button
                     onClick={() => setShowAll(!showAll)}
                     className={"text-sm font-mono font-bold px-4 py-1.5 rounded-lg border transition-colors " +
-                      (showAll
-                        ? "border-zinc-600 text-zinc-400 hover:text-white"
-                        : "border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20")}
+                      (showAll ? "border-zinc-600 text-zinc-400 hover:text-white" : "border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20")}
                   >
                     {showAll ? "↑ Show top 10" : "↓ Show all " + filtered.length + " cards"}
                   </button>
                 )}
-                <button
-                  onClick={exportToCSV}
-                  className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs"
-                >
+                <button onClick={exportToCSV} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-1.5 rounded-lg transition-colors text-xs">
                   Export CSV
                 </button>
               </div>

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { mapApiCard } from "@/lib/api";
 import { CardData } from "@/lib/types";
 import { useWatchlist } from "@/lib/watchlist-context";
+import WatchlistPicker from "@/components/WatchlistPicker";
 import Link from "next/link";
 
 interface TrendingCard extends CardData {
@@ -16,7 +17,7 @@ const NEG_INF = -999999;
 const POS_INF = 999999;
 
 function TrendingInner() {
-  const { addItem, removeItem, isWatched } = useWatchlist();
+  const { isWatched, removeItem } = useWatchlist();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -35,6 +36,7 @@ function TrendingInner() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">((searchParams.get("dir") as "asc" | "desc") ?? "desc");
   const [minRaw, setMinRaw] = useState(parseFloat(searchParams.get("min") ?? "") || NEG_INF);
   const [maxRaw, setMaxRaw] = useState(parseFloat(searchParams.get("max") ?? "") || POS_INF);
+  const [pickerCard, setPickerCard] = useState<TrendingCard | null>(null);
 
   function updateUrl(params: Record<string, string>) {
     const current = new URLSearchParams(searchParams.toString());
@@ -101,18 +103,7 @@ function TrendingInner() {
     if (isWatched(card.tcgPlayerId)) {
       await removeItem(card.tcgPlayerId);
     } else {
-      await addItem({
-        tcgPlayerId: card.tcgPlayerId,
-        name: card.name,
-        set: card.set,
-        image: card.image,
-        rawPrice: card.rawPrice,
-        psa10Price: card.psa10Price,
-        psa9Price: card.psa9Price ?? 0,
-        rarity: card.rarity,
-        number: card.number,
-        addedAt: new Date().toISOString(),
-      });
+      setPickerCard(card);
     }
   }
 
@@ -154,6 +145,24 @@ function TrendingInner() {
         <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
       </div>
 
+      {pickerCard && (
+        <WatchlistPicker
+          card={{
+            tcgPlayerId: pickerCard.tcgPlayerId,
+            name: pickerCard.name,
+            set: pickerCard.set,
+            image: pickerCard.image,
+            rawPrice: pickerCard.rawPrice,
+            psa10Price: pickerCard.psa10Price,
+            psa9Price: pickerCard.psa9Price ?? 0,
+            rarity: pickerCard.rarity,
+            number: pickerCard.number,
+            addedAt: new Date().toISOString(),
+          }}
+          onClose={() => setPickerCard(null)}
+        />
+      )}
+
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
         <div className="mb-8">
@@ -189,9 +198,7 @@ function TrendingInner() {
                   key={t}
                   onClick={() => { setTrendFilter(t); updateUrl({ trend: t === "all" ? "" : t }); }}
                   className={"px-3 py-2.5 rounded-lg border text-sm font-mono transition-colors " +
-                    (trendFilter === t
-                      ? "bg-zinc-700 border-zinc-500 text-white"
-                      : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-white")}
+                    (trendFilter === t ? "bg-zinc-700 border-zinc-500 text-white" : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-white")}
                 >
                   {t === "all" ? "All" : t === "up" ? "📈 Up" : t === "down" ? "📉 Down" : "➡️ Stable"}
                 </button>
@@ -229,19 +236,13 @@ function TrendingInner() {
             <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE ($)</label>
             <div className="flex items-center gap-2">
               <input
-                type="number"
-                value={minRaw === NEG_INF ? "" : minRaw}
-                min={0}
-                placeholder="Min"
+                type="number" value={minRaw === NEG_INF ? "" : minRaw} min={0} placeholder="Min"
                 onChange={(e) => { const v = e.target.value === "" ? NEG_INF : parseFloat(e.target.value) || 0; setMinRaw(v); updateUrl({ min: v === NEG_INF ? "" : String(v) }); }}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
               <span className="text-zinc-600 text-sm font-mono">—</span>
               <input
-                type="number"
-                value={maxRaw === POS_INF ? "" : maxRaw}
-                min={0}
-                placeholder="Max"
+                type="number" value={maxRaw === POS_INF ? "" : maxRaw} min={0} placeholder="Max"
                 onChange={(e) => { const v = e.target.value === "" ? POS_INF : parseFloat(e.target.value) || POS_INF; setMaxRaw(v); updateUrl({ max: v === POS_INF ? "" : String(v) }); }}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
@@ -288,23 +289,16 @@ function TrendingInner() {
                     onClick={() => router.push(cardUrl(card.tcgPlayerId))}
                     className="group relative bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 rounded-xl p-3 cursor-pointer transition-all hover:scale-[1.02]"
                   >
-                    {/* Watchlist button */}
                     <button
                       onClick={(e) => toggleWatch(e, card)}
                       className={"absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all z-10 " +
-                        (watched
-                          ? "bg-blue-500 text-white hover:bg-red-500"
-                          : "bg-zinc-800/80 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
+                        (watched ? "bg-blue-500 text-white hover:bg-red-500" : "bg-zinc-800/80 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
                     >
                       {watched ? "★" : "☆"}
                     </button>
 
                     {card.image && (
-                      <img
-                        src={card.image}
-                        alt={card.name}
-                        className="w-full rounded-lg mb-2 group-hover:scale-[1.03] transition-transform"
-                      />
+                      <img src={card.image} alt={card.name} className="w-full rounded-lg mb-2 group-hover:scale-[1.03] transition-transform" />
                     )}
 
                     <p className="text-sm font-semibold text-white truncate pr-8">{card.name}</p>
