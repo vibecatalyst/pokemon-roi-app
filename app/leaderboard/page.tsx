@@ -34,6 +34,125 @@ type EnrichedCard = CardData & {
 const NEG_INF = -999999;
 const POS_INF = 999999;
 
+function BulkWatchlistPicker({ cards, onClose }: { cards: EnrichedCard[]; onClose: () => void }) {
+  const { lists, addItem } = useWatchlist();
+  const [selectedListId, setSelectedListId] = useState<string | undefined>(undefined);
+  const [adding, setAdding] = useState(false);
+  const [done, setDone] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  async function handleAddAll() {
+    setAdding(true);
+    setProgress(0);
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      await addItem({
+        tcgPlayerId: card.tcgPlayerId,
+        name: card.name,
+        set: card.set,
+        image: card.image,
+        rawPrice: card.rawPrice,
+        psa10Price: card.psa10Price,
+        psa9Price: card.psa9Price ?? 0,
+        rarity: card.rarity,
+        number: card.number,
+        addedAt: new Date().toISOString(),
+      }, selectedListId);
+      setProgress(i + 1);
+    }
+    setAdding(false);
+    setDone(true);
+  }
+
+  const listName = selectedListId === undefined
+    ? "Main Watchlist"
+    : lists.find(l => l.id === selectedListId)?.name ?? "Unknown";
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#0d0d14] border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-black text-white">Add to Watchlist</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors text-xl">✕</button>
+        </div>
+
+        <p className="text-zinc-400 text-sm font-medium">
+          Adding <span className="text-white font-bold">{cards.length} selected card{cards.length !== 1 ? "s" : ""}</span> to a watchlist.
+        </p>
+
+        {!done && (
+          <>
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">Choose Watchlist</p>
+
+              <button
+                onClick={() => setSelectedListId(undefined)}
+                className={"w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors " +
+                  (selectedListId === undefined ? "bg-blue-500/20 border-blue-500/40 text-white" : "bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-zinc-500")}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">★</span>
+                  <span className="font-semibold text-sm">Main Watchlist</span>
+                </div>
+                {selectedListId === undefined && <span className="text-xs text-blue-400 font-bold">Selected ✓</span>}
+              </button>
+
+              {lists.map((list) => (
+                <button
+                  key={list.id}
+                  onClick={() => setSelectedListId(list.id)}
+                  className={"w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors " +
+                    (selectedListId === list.id ? "bg-blue-500/20 border-blue-500/40 text-white" : "bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-zinc-500")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">📋</span>
+                    <span className="font-semibold text-sm">{list.name}</span>
+                  </div>
+                  {selectedListId === list.id && <span className="text-xs text-blue-400 font-bold">Selected ✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {adding && (
+              <div className="space-y-2">
+                <div className="w-full bg-zinc-700 rounded-full h-2 overflow-hidden">
+                  <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: (progress / cards.length * 100) + "%" }} />
+                </div>
+                <p className="text-xs text-zinc-400 font-mono text-center">Adding {progress} of {cards.length}...</p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={onClose} className="flex-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={handleAddAll}
+                disabled={adding}
+                className="flex-1 bg-blue-500 hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-bold px-4 py-2.5 rounded-lg transition-colors text-sm"
+              >
+                {adding ? "Adding..." : "Add " + cards.length + " Card" + (cards.length !== 1 ? "s" : "")}
+              </button>
+            </div>
+          </>
+        )}
+
+        {done && (
+          <div className="space-y-4">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center">
+              <p className="text-2xl mb-1">✅</p>
+              <p className="text-emerald-400 font-bold text-sm">Added {cards.length} cards to {listName}</p>
+            </div>
+            <button onClick={onClose} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-4 py-2.5 rounded-lg transition-colors text-sm">
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LeaderboardInner() {
   const { fees } = useFees();
   const { isWatched, removeItem } = useWatchlist();
@@ -57,6 +176,9 @@ function LeaderboardInner() {
   const [maxRoi, setMaxRoi] = useState(parseFloat(searchParams.get("maxRoi") ?? "") || POS_INF);
   const [showAll, setShowAll] = useState(false);
   const [pickerCard, setPickerCard] = useState<EnrichedCard | null>(null);
+  const [showBulkPicker, setShowBulkPicker] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
 
   function updateUrl(params: Record<string, string>) {
     const current = new URLSearchParams(searchParams.toString());
@@ -91,6 +213,8 @@ function LeaderboardInner() {
     setError("");
     setCards([]);
     setShowAll(false);
+    setSelectedIds(new Set());
+    setSelectMode(false);
     try {
       const res = await fetch("/api/set-cards?set=" + encodeURIComponent(setName));
       const json = await res.json();
@@ -175,6 +299,24 @@ function LeaderboardInner() {
     }
   }
 
+  function toggleSelectCard(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === visibleCards.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visibleCards.map(c => c.tcgPlayerId)));
+    }
+  }
+
   const rarities = useMemo(() => {
     const all = new Set(cards.map((c) => c.rarity).filter(Boolean));
     return ["All", ...Array.from(all)];
@@ -199,6 +341,8 @@ function LeaderboardInner() {
   }, [cards, rarityFilter, sortBy, sortDir, fees, minRaw, maxRaw, minRoi, maxRoi]);
 
   const visibleCards = showAll ? filtered : filtered.slice(0, 10);
+
+  const selectedCards = filtered.filter(c => selectedIds.has(c.tcgPlayerId));
 
   const setStats = useMemo(() => {
     if (cards.length === 0) return null;
@@ -280,6 +424,13 @@ function LeaderboardInner() {
         />
       )}
 
+      {showBulkPicker && selectedCards.length > 0 && (
+        <BulkWatchlistPicker
+          cards={selectedCards}
+          onClose={() => { setShowBulkPicker(false); setSelectedIds(new Set()); setSelectMode(false); }}
+        />
+      )}
+
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
 
         <div className="mb-8">
@@ -334,10 +485,7 @@ function LeaderboardInner() {
                 <option value="psa10">PSA 10 Price</option>
                 <option value="raw">Raw Price</option>
               </select>
-              <button
-                onClick={handleSortDirChange}
-                className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2.5 text-white text-sm transition-colors font-mono"
-              >
+              <button onClick={handleSortDirChange} className="bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2.5 text-white text-sm transition-colors font-mono">
                 {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}
               </button>
             </div>
@@ -346,14 +494,12 @@ function LeaderboardInner() {
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">RAW PRICE ($)</label>
             <div className="flex items-center gap-2">
-              <input
-                type="number" value={minRaw} min={0} placeholder="Min"
+              <input type="number" value={minRaw} min={0} placeholder="Min"
                 onChange={(e) => handleMinRawChange(parseFloat(e.target.value) || 0)}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
               <span className="text-zinc-600 text-sm font-mono">—</span>
-              <input
-                type="number" value={maxRaw === POS_INF ? "" : maxRaw} min={0} placeholder="Max"
+              <input type="number" value={maxRaw === POS_INF ? "" : maxRaw} min={0} placeholder="Max"
                 onChange={(e) => handleMaxRawChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value) || POS_INF)}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
@@ -363,26 +509,31 @@ function LeaderboardInner() {
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">ROI % RANGE</label>
             <div className="flex items-center gap-2">
-              <input
-                type="number" value={minRoi === NEG_INF ? "" : minRoi} placeholder="Min %"
+              <input type="number" value={minRoi === NEG_INF ? "" : minRoi} placeholder="Min %"
                 onChange={(e) => handleMinRoiChange(e.target.value === "" ? NEG_INF : parseFloat(e.target.value))}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
               <span className="text-zinc-600 text-sm font-mono">—</span>
-              <input
-                type="number" value={maxRoi === POS_INF ? "" : maxRoi} placeholder="Max %"
+              <input type="number" value={maxRoi === POS_INF ? "" : maxRoi} placeholder="Max %"
                 onChange={(e) => handleMaxRoiChange(e.target.value === "" ? POS_INF : parseFloat(e.target.value))}
                 className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm outline-none font-mono"
               />
             </div>
           </div>
 
-          <div className="flex items-end gap-2">
-            <button
-              onClick={resetFilters}
-              className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-white font-bold px-3 py-2.5 rounded-lg transition-colors text-xs font-mono whitespace-nowrap"
-            >
+          <div className="flex items-end gap-2 flex-wrap">
+            <button onClick={resetFilters} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-white font-bold px-3 py-2.5 rounded-lg transition-colors text-xs font-mono whitespace-nowrap">
               Reset Filters
+            </button>
+            <button
+              onClick={() => { setSelectMode(!selectMode); setSelectedIds(new Set()); }}
+              disabled={filtered.length === 0}
+              className={"font-bold px-4 py-2.5 rounded-lg transition-colors text-sm whitespace-nowrap border " +
+                (selectMode
+                  ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
+                  : "bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 disabled:bg-zinc-800 disabled:text-zinc-600")}
+            >
+              {selectMode ? "✕ Cancel Select" : "☑ Select Cards"}
             </button>
             <button
               onClick={exportToCSV}
@@ -393,6 +544,30 @@ function LeaderboardInner() {
             </button>
           </div>
         </div>
+
+        {/* Selection bar */}
+        {selectMode && (
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleSelectAll}
+                className="text-sm font-bold text-blue-300 hover:text-white transition-colors font-mono"
+              >
+                {selectedIds.size === visibleCards.length ? "☑ Deselect All" : "☐ Select All Visible"}
+              </button>
+              <span className="text-zinc-400 text-sm font-medium">
+                {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""} selected
+              </span>
+            </div>
+            <button
+              onClick={() => setShowBulkPicker(true)}
+              disabled={selectedIds.size === 0}
+              className="bg-blue-500 hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-bold px-5 py-2 rounded-lg transition-colors text-sm"
+            >
+              ★ Add {selectedIds.size > 0 ? selectedIds.size + " " : ""}Selected to Watchlist
+            </button>
+          </div>
+        )}
 
         {/* Set overview stats */}
         {!loading && setStats && (
@@ -431,9 +606,7 @@ function LeaderboardInner() {
                 onClick={() => router.push(cardUrl(setStats.bestCard.tcgPlayerId))}
                 className="bg-yellow-400/5 border border-yellow-400/10 hover:border-yellow-400/30 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-colors"
               >
-                {setStats.bestCard.image && (
-                  <img src={setStats.bestCard.image} alt={setStats.bestCard.name} className="w-12 rounded flex-shrink-0" />
-                )}
+                {setStats.bestCard.image && <img src={setStats.bestCard.image} alt={setStats.bestCard.name} className="w-12 rounded flex-shrink-0" />}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-zinc-500 font-mono mb-0.5">Best ROI card in set</p>
                   <p className="text-sm font-bold text-white truncate">{setStats.bestCard.name}</p>
@@ -456,9 +629,7 @@ function LeaderboardInner() {
           </div>
         )}
 
-        {error && (
-          <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{error}</div>
-        )}
+        {error && <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-4">{error}</div>}
 
         {!loading && !selectedSet && (
           <div className="text-center py-20">
@@ -471,9 +642,7 @@ function LeaderboardInner() {
         {!loading && selectedSet && filtered.length === 0 && cards.length > 0 && (
           <div className="text-center py-20">
             <p className="text-zinc-500 font-mono text-sm">No cards match your current filters.</p>
-            <button onClick={resetFilters} className="mt-3 text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors">
-              Reset all filters →
-            </button>
+            <button onClick={resetFilters} className="mt-3 text-xs text-blue-400 hover:text-blue-300 font-mono transition-colors">Reset all filters →</button>
           </div>
         )}
 
@@ -485,8 +654,15 @@ function LeaderboardInner() {
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-[#0d0d14] border-b border-zinc-800">
                     <tr>
+                      {selectMode && (
+                        <th className="px-3 py-3 w-8">
+                          <button onClick={toggleSelectAll} className="text-zinc-400 hover:text-white transition-colors text-sm">
+                            {selectedIds.size === visibleCards.length && visibleCards.length > 0 ? "☑" : "☐"}
+                          </button>
+                        </th>
+                      )}
                       <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3 w-8">#</th>
-                      <th className="text-left text-xs text-zinc-500 font-mono px-2 py-3 w-8"></th>
+                      {!selectMode && <th className="text-left text-xs text-zinc-500 font-mono px-2 py-3 w-8"></th>}
                       <th className="text-left text-xs text-zinc-500 font-mono px-4 py-3">CARD</th>
                       <SortTh label="RAW" field="raw" />
                       <SortTh label="PSA 10" field="psa10" />
@@ -504,22 +680,35 @@ function LeaderboardInner() {
                       const roi10Color = card.roi > 50 ? "text-emerald-400" : card.roi > 0 ? "text-yellow-400" : "text-red-400";
                       const roi9Color = card.roi9 > 50 ? "text-emerald-400" : card.roi9 > 0 ? "text-yellow-400" : "text-red-400";
                       const watched = isWatched(card.tcgPlayerId);
+                      const isSelected = selectedIds.has(card.tcgPlayerId);
                       return (
                         <tr
                           key={card.id}
-                          onClick={() => router.push(cardUrl(card.tcgPlayerId))}
-                          className={"border-b border-zinc-800/50 transition-colors cursor-pointer " + (idx % 2 === 0 ? "bg-transparent hover:bg-zinc-800/50" : "bg-zinc-800/20 hover:bg-zinc-800/50")}
+                          onClick={() => selectMode ? toggleSelectCard({ stopPropagation: () => {} } as React.MouseEvent, card.tcgPlayerId) : router.push(cardUrl(card.tcgPlayerId))}
+                          className={"border-b border-zinc-800/50 transition-colors cursor-pointer " +
+                            (isSelected
+                              ? "bg-blue-500/10 hover:bg-blue-500/20"
+                              : idx % 2 === 0 ? "bg-transparent hover:bg-zinc-800/50" : "bg-zinc-800/20 hover:bg-zinc-800/50")}
                         >
+                          {selectMode && (
+                            <td className="px-3 py-3" onClick={(e) => toggleSelectCard(e, card.tcgPlayerId)}>
+                              <span className={"text-lg " + (isSelected ? "text-blue-400" : "text-zinc-600")}>
+                                {isSelected ? "☑" : "☐"}
+                              </span>
+                            </td>
+                          )}
                           <td className="px-4 py-3 text-zinc-600 text-sm font-mono">{idx + 1}</td>
-                          <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
-                            <button
-                              className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
-                                (watched ? "bg-blue-500 text-white hover:bg-red-500" : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
-                              title={watched ? "Remove from watchlist" : "Add to watchlist"}
-                            >
-                              {watched ? "★" : "☆"}
-                            </button>
-                          </td>
+                          {!selectMode && (
+                            <td className="px-2 py-3" onClick={(e) => toggleWatch(e, card)}>
+                              <button
+                                className={"w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-all shadow " +
+                                  (watched ? "bg-blue-500 text-white hover:bg-red-500" : "bg-zinc-800 text-zinc-500 hover:bg-blue-500 hover:text-white border border-zinc-700")}
+                                title={watched ? "Remove from watchlist" : "Add to watchlist"}
+                              >
+                                {watched ? "★" : "☆"}
+                              </button>
+                            </td>
+                          )}
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               {card.image && <img src={card.image} alt={card.name} className="w-10 rounded" />}
