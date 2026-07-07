@@ -57,6 +57,7 @@ const navLinks = [
   { href: "/leaderboard", label: "🏆 Top ROI" },
   { href: "/sealed", label: "🎁 Sealed" },
   { href: "/trending", label: "📈 Trending" },
+  { href: "/raw-premium", label: "⚠️ Raw Premium" },
   { href: "/watchlist", label: "★ Watchlist" },
   { href: "/submissions", label: "📦 Submissions" },
   { href: "/profit", label: "💰 Profit" },
