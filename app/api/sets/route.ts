@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { fetchWithCache } from "@/lib/api-cache";
 
-const API_KEY = process.env.NEXT_PUBLIC_POKEPRICE_API_KEY!;
 const BASE_URL = "https://www.pokemonpricetracker.com/api/v2";
 
 export async function GET() {
@@ -9,11 +9,8 @@ export async function GET() {
   const limit = 50;
 
   while (true) {
-    const res = await fetch(
-      `${BASE_URL}/sets?sortBy=releaseDate&sortOrder=desc&limit=${limit}&offset=${offset}`,
-      { headers: { Authorization: `Bearer ${API_KEY}` } }
-    );
-    const json = await res.json();
+    const url = `${BASE_URL}/sets?sortBy=releaseDate&sortOrder=desc&limit=${limit}&offset=${offset}`;
+    const json = await fetchWithCache(url) as { data?: Record<string, unknown>[]; metadata?: { hasMore?: boolean } };
     const data = json.data ?? [];
     allSets.push(...data);
 

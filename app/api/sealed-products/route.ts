@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchWithCache } from "@/lib/api-cache";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -12,15 +13,7 @@ export async function GET(req: NextRequest) {
   if (includeHistory) params.set("includeHistory", includeHistory);
   params.set("limit", "50");
 
-  const res = await fetch(
-    "https://www.pokemonpricetracker.com/api/v2/sealed-products?" + params.toString(),
-    {
-      headers: {
-        Authorization: "Bearer " + process.env.NEXT_PUBLIC_POKEPRICE_API_KEY,
-      },
-    }
-  );
-
-  const json = await res.json();
+  const url = "https://www.pokemonpricetracker.com/api/v2/sealed-products?" + params.toString();
+  const json = await fetchWithCache(url);
   return NextResponse.json(json);
 }
