@@ -23,6 +23,8 @@ function mapDbSubmission(row: Record<string, unknown>): Submission {
     rawPrice: Number(row.raw_price ?? 0),
     psa10Price: Number(row.psa10_price ?? 0),
     psa9Price: Number(row.psa9_price ?? 0),
+    psa8Price: Number(row.psa8_price ?? 0),
+    psa7Price: Number(row.psa7_price ?? 0),
     gradingFee: Number(row.grading_fee ?? 0),
     shippingCost: Number(row.shipping_cost ?? 0),
     status: (row.status as Submission["status"]) ?? "preparing",

@@ -66,18 +66,19 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
 
   const psa10History = priceHistory?.psa10 ?? {};
   const psa9History = priceHistory?.psa9 ?? {};
+  const psa8History = priceHistory?.psa8 ?? {};
+  const psa7History = priceHistory?.psa7 ?? {};
 
   const psa10Dates = Object.keys(psa10History);
   const psa9Dates = Object.keys(psa9History);
-  const allDates = Array.from(new Set([...psa10Dates, ...psa9Dates])).sort();
-
-  console.log("PriceChart rendering, allDates:", allDates.length, "mounted:", mounted);
+  const psa8Dates = Object.keys(psa8History);
+  const psa7Dates = Object.keys(psa7History);
+  const allDates = Array.from(new Set([...psa10Dates, ...psa9Dates, ...psa8Dates, ...psa7Dates])).sort();
 
   if (allDates.length === 0) {
     return (
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 text-center">
         <p className="text-zinc-600 font-mono text-sm">No price history available for this card yet.</p>
-        <p className="text-zinc-700 text-xs mt-1">psa10: {psa10Dates.length} psa9: {psa9Dates.length}</p>
       </div>
     );
   }
@@ -86,6 +87,8 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
     date: formatDate(date),
     psa10: psa10History[date]?.average ?? null,
     psa9: psa9History[date]?.average ?? null,
+    psa8: psa8History[date]?.average ?? null,
+    psa7: psa7History[date]?.average ?? null,
     raw: rawPrice > 0 ? rawPrice : null,
   }));
 
@@ -104,9 +107,11 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
         <p className="text-xs text-zinc-500 mt-0.5">
           {cardName} — {allDates.length} data points
         </p>
-        <div className="flex gap-4 mt-2">
+        <div className="flex gap-4 mt-2 flex-wrap">
           <span className="text-xs font-mono text-yellow-400">● PSA 10: {psa10Dates.length} points</span>
           <span className="text-xs font-mono text-blue-400">● PSA 9: {psa9Dates.length} points</span>
+          <span className="text-xs font-mono text-purple-400">● PSA 8: {psa8Dates.length} points</span>
+          <span className="text-xs font-mono text-teal-400">● PSA 7: {psa7Dates.length} points</span>
         </div>
       </div>
       <ResponsiveContainer width="100%" height={300}>
@@ -146,6 +151,26 @@ export default function PriceChart({ priceHistory, rawPrice, cardName }: Props) 
             stroke="#60a5fa"
             strokeWidth={2}
             dot={{ fill: "#60a5fa", r: 4 }}
+            connectNulls
+            activeDot={{ r: 6 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="psa8"
+            name="PSA 8"
+            stroke="#c084fc"
+            strokeWidth={2}
+            dot={{ fill: "#c084fc", r: 4 }}
+            connectNulls
+            activeDot={{ r: 6 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="psa7"
+            name="PSA 7"
+            stroke="#2dd4bf"
+            strokeWidth={2}
+            dot={{ fill: "#2dd4bf", r: 4 }}
             connectNulls
             activeDot={{ r: 6 }}
           />

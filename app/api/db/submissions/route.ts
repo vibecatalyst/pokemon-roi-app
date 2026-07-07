@@ -30,6 +30,8 @@ export async function POST(req: NextRequest) {
     raw_price: body.rawPrice,
     psa10_price: body.psa10Price,
     psa9_price: body.psa9Price,
+    psa8_price: body.psa8Price,
+    psa7_price: body.psa7Price,
     grading_fee: body.gradingFee,
     shipping_cost: body.shippingCost,
     status: body.status,
@@ -56,4 +58,4 @@ export async function DELETE(req: NextRequest) {
     .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
-}
+} 

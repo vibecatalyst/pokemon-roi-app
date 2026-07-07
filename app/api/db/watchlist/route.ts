@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
         raw_price: body.rawPrice,
         psa10_price: body.psa10Price,
         psa9_price: body.psa9Price,
+        psa8_price: body.psa8Price,
+        psa7_price: body.psa7Price,
         rarity: body.rarity,
         number: body.number,
       })
@@ -62,6 +64,8 @@ export async function POST(req: NextRequest) {
         raw_price: body.rawPrice,
         psa10_price: body.psa10Price,
         psa9_price: body.psa9Price,
+        psa8_price: body.psa8Price,
+        psa7_price: body.psa7Price,
         rarity: body.rarity,
         number: body.number,
         added_at: body.addedAt,

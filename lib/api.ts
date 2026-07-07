@@ -19,9 +19,13 @@ export function mapApiCard(c: Record<string, unknown>): CardData {
 
   const psa10Data = salesByGrade.psa10 ?? {};
   const psa9Data = salesByGrade.psa9 ?? {};
+  const psa8Data = salesByGrade.psa8 ?? {};
+  const psa7Data = salesByGrade.psa7 ?? {};
 
   const smartPrice10 = (psa10Data.smartMarketPrice as Record<string, number>) ?? {};
   const smartPrice9 = (psa9Data.smartMarketPrice as Record<string, number>) ?? {};
+  const smartPrice8 = (psa8Data.smartMarketPrice as Record<string, number>) ?? {};
+  const smartPrice7 = (psa7Data.smartMarketPrice as Record<string, number>) ?? {};
 
   const psa10Price =
     smartPrice10.price ??
@@ -35,6 +39,18 @@ export function mapApiCard(c: Record<string, unknown>): CardData {
     (psa9Data.averagePrice as number) ??
     0;
 
+  const psa8Price =
+    smartPrice8.price ??
+    (psa8Data.marketPrice7Day as number) ??
+    (psa8Data.averagePrice as number) ??
+    0;
+
+  const psa7Price =
+    smartPrice7.price ??
+    (psa7Data.marketPrice7Day as number) ??
+    (psa7Data.averagePrice as number) ??
+    0;
+
   return {
     id: String(c.id ?? c.tcgPlayerId ?? Math.random()),
     name: String(c.name ?? "Unknown"),
@@ -45,6 +61,8 @@ export function mapApiCard(c: Record<string, unknown>): CardData {
     rawPrice,
     psa10Price,
     psa9Price,
+    psa8Price,
+    psa7Price,
     tcgPlayerId: String(c.tcgPlayerId ?? c.id ?? ""),
   };
 }

@@ -25,6 +25,8 @@ function SubmitModal({ card, fees, onClose, onSubmit }: SubmitModalProps) {
   const [rawPrice, setRawPrice] = useState(card.rawPrice);
   const [psa10Price, setPsa10Price] = useState(card.psa10Price);
   const [psa9Price, setPsa9Price] = useState(card.psa9Price ?? 0);
+  const [psa8Price, setPsa8Price] = useState(card.psa8Price ?? 0);
+  const [psa7Price, setPsa7Price] = useState(card.psa7Price ?? 0);
   const [gradingFee, setGradingFee] = useState(fees.gradingFee);
   const [shippingCost, setShippingCost] = useState(fees.shippingToGrader + fees.shippingBack);
   const [submissionNumber, setSubmissionNumber] = useState("");
@@ -42,6 +44,8 @@ function SubmitModal({ card, fees, onClose, onSubmit }: SubmitModalProps) {
       rawPrice,
       psa10Price,
       psa9Price,
+      psa8Price,
+      psa7Price,
       gradingFee,
       shippingCost,
       status: "preparing",
@@ -85,6 +89,14 @@ function SubmitModal({ card, fees, onClose, onSubmit }: SubmitModalProps) {
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">PSA 9 MARKET ($)</label>
             <input type="number" value={psa9Price} onChange={(e) => setPsa9Price(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm outline-none font-mono" />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">PSA 8 MARKET ($)</label>
+            <input type="number" value={psa8Price} onChange={(e) => setPsa8Price(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm outline-none font-mono" />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 font-mono mb-1">PSA 7 MARKET ($)</label>
+            <input type="number" value={psa7Price} onChange={(e) => setPsa7Price(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm outline-none font-mono" />
           </div>
           <div>
             <label className="block text-xs text-zinc-500 font-mono mb-1">GRADING FEE ($)</label>
@@ -229,6 +241,8 @@ function CardDetailInner() {
             rawPrice: card.rawPrice,
             psa10Price: card.psa10Price,
             psa9Price: card.psa9Price ?? 0,
+            psa8Price: card.psa8Price ?? 0,
+            psa7Price: card.psa7Price ?? 0,
             rarity: card.rarity,
             number: card.number,
             addedAt: new Date().toISOString(),

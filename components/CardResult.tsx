@@ -36,6 +36,10 @@ export default function CardResult({ card, fees, onImageClick }: Props) {
   const psa10 = card.psa10Price > 0 ? calcROI(card.psa10Price, card.rawPrice, fees) : null;
   const psa9Price = card.psa9Price ?? 0;
   const psa9 = psa9Price > 0 ? calcROI(psa9Price, card.rawPrice, fees) : null;
+  const psa8Price = card.psa8Price ?? 0;
+  const psa8 = psa8Price > 0 ? calcROI(psa8Price, card.rawPrice, fees) : null;
+  const psa7Price = card.psa7Price ?? 0;
+  const psa7 = psa7Price > 0 ? calcROI(psa7Price, card.rawPrice, fees) : null;
 
   return (
     <div className="space-y-6">
@@ -86,6 +90,22 @@ export default function CardResult({ card, fees, onImageClick }: Props) {
                   <p className="text-xs text-blue-400 font-mono mb-1">PSA 9</p>
                   <p className="text-xl font-black text-blue-400 font-mono">${psa9Price.toFixed(2)}</p>
                   <p className="text-xs text-zinc-500 mt-0.5">Mint</p>
+                </div>
+              )}
+
+              {psa8Price > 0 && (
+                <div className="bg-purple-400/10 border border-purple-400/20 rounded-xl p-3">
+                  <p className="text-xs text-purple-400 font-mono mb-1">PSA 8</p>
+                  <p className="text-xl font-black text-purple-400 font-mono">${psa8Price.toFixed(2)}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">NM-Mint</p>
+                </div>
+              )}
+
+              {psa7Price > 0 && (
+                <div className="bg-teal-400/10 border border-teal-400/20 rounded-xl p-3">
+                  <p className="text-xs text-teal-400 font-mono mb-1">PSA 7</p>
+                  <p className="text-xl font-black text-teal-400 font-mono">${psa7Price.toFixed(2)}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">Near Mint</p>
                 </div>
               )}
 
@@ -221,6 +241,114 @@ export default function CardResult({ card, fees, onImageClick }: Props) {
                   ? "Only profitable if you hit PSA 10 — PSA 9 is a loss"
                   : psa9.profit > 0 && psa10.profit <= 0
                   ? "Even a PSA 9 is profitable on this card"
+                  : "Neither grade is profitable at current prices"}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PSA 8 ROI */}
+      {psa8 && (
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-black text-white">PSA 8 &mdash; NM-Mint</h3>
+            <div className="text-right">
+              <p className={"text-3xl font-black font-mono " + (psa8.roi >= 0 ? "text-purple-400" : "text-red-400")}>
+                {psa8.roi >= 0 ? "+" : ""}{psa8.roi.toFixed(0)}%
+              </p>
+              <p className="text-xs text-zinc-400 font-mono">ROI</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatBox
+              label="NET PROFIT"
+              value={(psa8.profit >= 0 ? "+" : "") + "$" + psa8.profit.toFixed(2)}
+              highlight={psa8.profit >= 0 ? "green" : "red"}
+            />
+            <StatBox
+              label="SALE PROCEEDS"
+              value={"$" + psa8.saleProceeds.toFixed(2)}
+              sub={"after " + fees.ebayFeePercent + "% platform fee"}
+            />
+            <StatBox
+              label="EBAY FEE"
+              value={"$" + psa8.ebayFee.toFixed(2)}
+              sub={fees.ebayFeePercent + "% of sale"}
+            />
+            <StatBox
+              label="TOTAL INVESTED"
+              value={"$" + psa8.totalCosts.toFixed(2)}
+              sub="raw + grading + shipping"
+            />
+          </div>
+
+          {psa9 && (
+            <div className="mt-4 bg-zinc-800/40 border border-zinc-700 rounded-xl p-4">
+              <p className="text-sm font-bold text-white">
+                {psa9.profit > 0 && psa8.profit > 0 && psa9.profit - psa8.profit > 20
+                  ? "PSA 9 worth chasing — $" + (psa9.profit - psa8.profit).toFixed(2) + " more profit than an 8"
+                  : psa9.profit > 0 && psa8.profit > 0
+                  ? "PSA 8 nearly as good — only $" + (psa9.profit - psa8.profit).toFixed(2) + " less than a 9"
+                  : psa9.profit > 0 && psa8.profit <= 0
+                  ? "Only profitable if you hit PSA 9 — PSA 8 is a loss"
+                  : psa8.profit > 0 && psa9.profit <= 0
+                  ? "Even a PSA 8 is profitable on this card"
+                  : "Neither grade is profitable at current prices"}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PSA 7 ROI */}
+      {psa7 && (
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-black text-white">PSA 7 &mdash; Near Mint</h3>
+            <div className="text-right">
+              <p className={"text-3xl font-black font-mono " + (psa7.roi >= 0 ? "text-teal-400" : "text-red-400")}>
+                {psa7.roi >= 0 ? "+" : ""}{psa7.roi.toFixed(0)}%
+              </p>
+              <p className="text-xs text-zinc-400 font-mono">ROI</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatBox
+              label="NET PROFIT"
+              value={(psa7.profit >= 0 ? "+" : "") + "$" + psa7.profit.toFixed(2)}
+              highlight={psa7.profit >= 0 ? "green" : "red"}
+            />
+            <StatBox
+              label="SALE PROCEEDS"
+              value={"$" + psa7.saleProceeds.toFixed(2)}
+              sub={"after " + fees.ebayFeePercent + "% platform fee"}
+            />
+            <StatBox
+              label="EBAY FEE"
+              value={"$" + psa7.ebayFee.toFixed(2)}
+              sub={fees.ebayFeePercent + "% of sale"}
+            />
+            <StatBox
+              label="TOTAL INVESTED"
+              value={"$" + psa7.totalCosts.toFixed(2)}
+              sub="raw + grading + shipping"
+            />
+          </div>
+
+          {psa8 && (
+            <div className="mt-4 bg-zinc-800/40 border border-zinc-700 rounded-xl p-4">
+              <p className="text-sm font-bold text-white">
+                {psa8.profit > 0 && psa7.profit > 0 && psa8.profit - psa7.profit > 20
+                  ? "PSA 8 worth chasing — $" + (psa8.profit - psa7.profit).toFixed(2) + " more profit than a 7"
+                  : psa8.profit > 0 && psa7.profit > 0
+                  ? "PSA 7 nearly as good — only $" + (psa8.profit - psa7.profit).toFixed(2) + " less than an 8"
+                  : psa8.profit > 0 && psa7.profit <= 0
+                  ? "Only profitable if you hit PSA 8 — PSA 7 is a loss"
+                  : psa7.profit > 0 && psa8.profit <= 0
+                  ? "Even a PSA 7 is profitable on this card"
                   : "Neither grade is profitable at current prices"}
               </p>
             </div>

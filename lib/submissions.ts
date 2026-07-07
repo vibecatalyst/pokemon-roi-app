@@ -11,6 +11,8 @@ export interface Submission {
   rawPrice: number;
   psa10Price: number;
   psa9Price: number;
+  psa8Price?: number;
+  psa7Price?: number;
   gradingFee: number;
   shippingCost: number;
   status: SubmissionStatus;

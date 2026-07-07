@@ -8,6 +8,8 @@ export interface CardData {
   rawPrice: number;
   psa10Price: number;
   psa9Price?: number;
+  psa8Price?: number;
+  psa7Price?: number;
   tcgPlayerId: string;
 }
 

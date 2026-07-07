@@ -6,6 +6,8 @@ export interface WatchlistItem {
   rawPrice: number;
   psa10Price: number;
   psa9Price: number;
+  psa8Price?: number;
+  psa7Price?: number;
   rarity: string;
   number: string;
   addedAt: string;
