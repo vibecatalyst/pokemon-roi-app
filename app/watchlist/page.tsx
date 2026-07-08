@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useWatchlist } from "@/lib/watchlist-context";
 import { WatchlistItem } from "@/lib/watchlist";
 import { useFees } from "@/lib/fees-context";
 import WatchlistPicker from "@/components/WatchlistPicker";
 import Link from "next/link";
+
+const RATE_LIMIT_KEY = "pokeroi_watchlist_rate_limited";
 
 function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFees>["fees"]) {
   const totalCosts = rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
@@ -27,6 +29,8 @@ export default function Watchlist() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState(0);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<{ kind: "blocked" | "lowCredits"; remaining?: number } | null>(null);
+  const [usageWarning, setUsageWarning] = useState<{ remaining: number; needed: number } | null>(null);
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [confirmDeleteList, setConfirmDeleteList] = useState<string | null>(null);
   const [newListName, setNewListName] = useState("");
@@ -37,6 +41,7 @@ export default function Watchlist() {
   const [viewMode, setViewMode] = useState<"table" | "grid">("grid");
   const { fees } = useFees();
   const router = useRouter();
+  const autoRefreshedLists = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setMounted(true);
@@ -46,6 +51,16 @@ export default function Watchlist() {
     if (activeListId === null) return items.filter(i => !i.watchlistId);
     return items.filter(i => i.watchlistId === activeListId);
   }, [items, activeListId]);
+
+  useEffect(() => {
+    if (!mounted || syncing || refreshing || listItems.length === 0) return;
+    if (sessionStorage.getItem(RATE_LIMIT_KEY)) { setRefreshNotice({ kind: "blocked" }); return; }
+    const key = activeListId ?? "__main__";
+    if (autoRefreshedLists.current.has(key)) return;
+    autoRefreshedLists.current.add(key);
+    handleRefreshAll(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, syncing, activeListId, listItems.length]);
 
   async function handleRemove(tcgPlayerId: string) {
     await removeItem(tcgPlayerId, activeListId ?? undefined);
@@ -79,14 +94,47 @@ export default function Watchlist() {
     setEditingListName("");
   }
 
-  async function handleRefreshAll() {
+  async function fetchUsage(): Promise<{ dailyRemaining: number | null; minuteRemaining: number | null } | null> {
+    try {
+      const res = await fetch("/api/usage");
+      if (!res.ok) return null;
+      const json = await res.json();
+      return { dailyRemaining: json.dailyRemaining ?? null, minuteRemaining: json.minuteRemaining ?? null };
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleRefreshAll(auto = false, force = false) {
     if (listItems.length === 0) return;
+    if (auto && sessionStorage.getItem(RATE_LIMIT_KEY)) {
+      setRefreshNotice({ kind: "blocked" });
+      return;
+    }
+    if (!force) {
+      const usage = await fetchUsage();
+      if (usage?.dailyRemaining !== null && usage?.dailyRemaining !== undefined && listItems.length > usage.dailyRemaining) {
+        if (auto) {
+          setRefreshNotice({ kind: "lowCredits", remaining: usage.dailyRemaining });
+        } else {
+          setUsageWarning({ remaining: usage.dailyRemaining, needed: listItems.length });
+        }
+        return;
+      }
+    }
+    setUsageWarning(null);
+    setRefreshNotice(null);
     setRefreshing(true);
     setRefreshProgress(0);
     const updated = [...listItems];
+    let blocked = false;
     for (let i = 0; i < updated.length; i++) {
       try {
         const res = await fetch("/api/card?id=" + updated[i].tcgPlayerId);
+        if (res.status === 429) {
+          blocked = true;
+          break;
+        }
         const json = await res.json();
         const raw = json.data;
         const cardData = Array.isArray(raw) ? raw[0] : raw;
@@ -107,7 +155,14 @@ export default function Watchlist() {
         // keep existing price
       }
       setRefreshProgress(i + 1);
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 1100));
+    }
+    if (blocked) {
+      sessionStorage.setItem(RATE_LIMIT_KEY, String(Date.now()));
+      setRefreshNotice({ kind: "blocked" });
+      setRefreshing(false);
+      setRefreshProgress(0);
+      return;
     }
     for (const item of updated) {
       await fetch("/api/db/watchlist", {
@@ -128,6 +183,7 @@ export default function Watchlist() {
         }),
       });
     }
+    sessionStorage.removeItem(RATE_LIMIT_KEY);
     await reload();
     setRefreshing(false);
     setRefreshProgress(0);
@@ -411,7 +467,7 @@ export default function Watchlist() {
                   </div>
 
                   <button
-                    onClick={handleRefreshAll}
+                    onClick={() => handleRefreshAll()}
                     disabled={refreshing}
                     className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-600 border border-zinc-600 text-zinc-300 font-bold px-4 py-2 rounded-lg transition-colors text-sm"
                   >
@@ -469,6 +525,28 @@ export default function Watchlist() {
                 <Link href="/" className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-5 py-2.5 rounded-lg transition-colors text-sm">
                   Search Cards
                 </Link>
+              </div>
+            )}
+
+            {refreshNotice?.kind === "blocked" && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 font-semibold">
+                ⚠ Pricing API rate limit hit — stopped refreshing to avoid making it worse. Prices below may be stale. Try the Refresh button again later.
+              </div>
+            )}
+
+            {refreshNotice?.kind === "lowCredits" && (
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 text-sm text-yellow-400 font-semibold">
+                ⚠ Only {refreshNotice.remaining} API credits left today — skipped auto-refresh for this list ({listItems.length} cards) to avoid hitting the daily limit.
+              </div>
+            )}
+
+            {usageWarning && (
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 text-sm text-yellow-400 font-semibold flex items-center justify-between gap-3 flex-wrap">
+                <span>⚠ Only {usageWarning.remaining} API credits left today, but this list has {usageWarning.needed} cards — refreshing all of them may hit the daily limit.</span>
+                <div className="flex gap-2">
+                  <button onClick={() => handleRefreshAll(false, true)} className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors">Refresh anyway</button>
+                  <button onClick={() => setUsageWarning(null)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-300 font-bold px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors">Cancel</button>
+                </div>
               </div>
             )}
 
