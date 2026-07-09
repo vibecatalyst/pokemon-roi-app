@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useWatchlist } from "@/lib/watchlist-context";
 import { WatchlistItem } from "@/lib/watchlist";
@@ -9,6 +9,13 @@ import WatchlistPicker from "@/components/WatchlistPicker";
 import Link from "next/link";
 
 const RATE_LIMIT_KEY = "pokeroi_watchlist_rate_limited";
+const AUTO_REFRESH_DATE_KEY = "pokeroi_watchlist_auto_refresh_date";
+const VENDOR_MODE_KEY = "pokeroi_watchlist_vendor_mode";
+
+function todayLocal() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
 
 function calcROI(price: number, rawPrice: number, fees: ReturnType<typeof useFees>["fees"]) {
   const totalCosts = rawPrice * (1 + fees.buyingFeePercent / 100) + fees.gradingFee + fees.shippingToGrader + fees.shippingBack;
@@ -39,13 +46,23 @@ export default function Watchlist() {
   const [editingListName, setEditingListName] = useState("");
   const [mainListName, setMainListName] = useState("Main");
   const [viewMode, setViewMode] = useState<"table" | "grid">("grid");
+  const [vendorMode, setVendorMode] = useState(false);
   const { fees } = useFees();
   const router = useRouter();
-  const autoRefreshedLists = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setMounted(true);
+    if (localStorage.getItem(VENDOR_MODE_KEY) === "true") setVendorMode(true);
   }, []);
+
+  function toggleVendorMode() {
+    setVendorMode((v) => {
+      const next = !v;
+      if (next) setExpandedId(null);
+      localStorage.setItem(VENDOR_MODE_KEY, String(next));
+      return next;
+    });
+  }
 
   const listItems = useMemo(() => {
     if (activeListId === null) return items.filter(i => !i.watchlistId);
@@ -55,12 +72,11 @@ export default function Watchlist() {
   useEffect(() => {
     if (!mounted || syncing || refreshing || listItems.length === 0) return;
     if (sessionStorage.getItem(RATE_LIMIT_KEY)) { setRefreshNotice({ kind: "blocked" }); return; }
-    const key = activeListId ?? "__main__";
-    if (autoRefreshedLists.current.has(key)) return;
-    autoRefreshedLists.current.add(key);
+    if (localStorage.getItem(AUTO_REFRESH_DATE_KEY) === todayLocal()) return;
+    localStorage.setItem(AUTO_REFRESH_DATE_KEY, todayLocal());
     handleRefreshAll(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, syncing, activeListId, listItems.length]);
+  }, [mounted, syncing, listItems.length]);
 
   async function handleRemove(tcgPlayerId: string) {
     await removeItem(tcgPlayerId, activeListId ?? undefined);
@@ -430,6 +446,15 @@ export default function Watchlist() {
 
               {sorted.length > 0 && (
                 <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={toggleVendorMode}
+                    title="Hide prices and profit numbers — safe to show someone else's screen"
+                    className={"flex items-center gap-2 border font-bold px-4 py-2 rounded-lg transition-colors text-sm " +
+                      (vendorMode ? "bg-purple-500/20 border-purple-500/40 text-purple-300" : "bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-zinc-500")}
+                  >
+                    {vendorMode ? "🙈 Prices Hidden" : "👁 Hide Prices"}
+                  </button>
+
                   <div className="flex items-center gap-1 bg-zinc-800 border border-zinc-600 rounded-lg p-1">
                     <button
                       onClick={() => setViewMode("table")}
@@ -482,7 +507,7 @@ export default function Watchlist() {
             </div>
 
             {/* Stats */}
-            {sorted.length > 0 && (
+            {sorted.length > 0 && !vendorMode && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {(() => {
                   const profitable = sorted.filter(i => calcROI(i.psa10Price, i.rawPrice, fees).profit > 0);
@@ -561,16 +586,16 @@ export default function Watchlist() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-zinc-700">
-                        <th className="text-left text-xs text-zinc-400 font-mono px-4 py-3 w-8"></th>
+                        {!vendorMode && <th className="text-left text-xs text-zinc-400 font-mono px-4 py-3 w-8"></th>}
                         <th className="text-left text-xs text-zinc-400 font-mono px-4 py-3">CARD</th>
-                        <SortHeader label="RAW" field="raw" />
-                        <SortHeader label="PSA 10" field="psa10" />
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">PSA 9</th>
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">TOTAL COST</th>
-                        <SortHeader label="P10 PROFIT" field="profit" />
-                        <SortHeader label="P10 ROI" field="roi" />
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">P9 PROFIT</th>
-                        <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">P9 ROI</th>
+                        {!vendorMode && <SortHeader label="RAW" field="raw" />}
+                        {!vendorMode && <SortHeader label="PSA 10" field="psa10" />}
+                        {!vendorMode && <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">PSA 9</th>}
+                        {!vendorMode && <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">TOTAL COST</th>}
+                        {!vendorMode && <SortHeader label="P10 PROFIT" field="profit" />}
+                        {!vendorMode && <SortHeader label="P10 ROI" field="roi" />}
+                        {!vendorMode && <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">P9 PROFIT</th>}
+                        {!vendorMode && <th className="text-right text-xs text-zinc-400 font-mono px-4 py-3">P9 ROI</th>}
                         <SortHeader label="ADDED" field="added" />
                         <th className="px-4 py-3"></th>
                       </tr>
@@ -586,11 +611,13 @@ export default function Watchlist() {
                         return (
                           <>
                             <tr key={item.tcgPlayerId} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                              <td className="px-4 py-3">
-                                <button onClick={() => setExpandedId(isExpanded ? null : item.tcgPlayerId)} className="text-zinc-500 hover:text-white transition-colors text-sm font-mono w-5">
-                                  {isExpanded ? "▼" : "▶"}
-                                </button>
-                              </td>
+                              {!vendorMode && (
+                                <td className="px-4 py-3">
+                                  <button onClick={() => setExpandedId(isExpanded ? null : item.tcgPlayerId)} className="text-zinc-500 hover:text-white transition-colors text-sm font-mono w-5">
+                                    {isExpanded ? "▼" : "▶"}
+                                  </button>
+                                </td>
+                              )}
                               <td className="px-4 py-3 cursor-pointer" onClick={() => router.push(cardUrl(item.tcgPlayerId))}>
                                 <div className="flex items-center gap-3">
                                   {item.image && <img src={item.image} alt={item.name} className="w-10 rounded" />}
@@ -600,20 +627,20 @@ export default function Watchlist() {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">{item.rawPrice > 0 ? "$" + item.rawPrice.toFixed(2) : "N/A"}</td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">{hasPsa9 ? "$" + item.psa9Price.toFixed(2) : "N/A"}</td>
-                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${r10.totalCosts.toFixed(2)}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.profit >= 0 ? "+" : "") + "$" + r10.profit.toFixed(2) : "N/A"}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.roi >= 0 ? "+" : "") + r10.roi.toFixed(0) + "%" : "N/A"}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.profit >= 0 ? "+" : "") + "$" + r9.profit.toFixed(2) : "N/A"}</td>
-                              <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.roi >= 0 ? "+" : "") + r9.roi.toFixed(0) + "%" : "N/A"}</td>
+                              {!vendorMode && <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300">{item.rawPrice > 0 ? "$" + item.rawPrice.toFixed(2) : "N/A"}</td>}
+                              {!vendorMode && <td className="px-4 py-3 text-right text-sm font-mono text-yellow-400">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</td>}
+                              {!vendorMode && <td className="px-4 py-3 text-right text-sm font-mono text-blue-400">{hasPsa9 ? "$" + item.psa9Price.toFixed(2) : "N/A"}</td>}
+                              {!vendorMode && <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400">${r10.totalCosts.toFixed(2)}</td>}
+                              {!vendorMode && <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.profit >= 0 ? "+" : "") + "$" + r10.profit.toFixed(2) : "N/A"}</td>}
+                              {!vendorMode && <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + roi10Color}>{item.psa10Price > 0 ? (r10.roi >= 0 ? "+" : "") + r10.roi.toFixed(0) + "%" : "N/A"}</td>}
+                              {!vendorMode && <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.profit >= 0 ? "+" : "") + "$" + r9.profit.toFixed(2) : "N/A"}</td>}
+                              {!vendorMode && <td className={"px-4 py-3 text-right text-sm font-mono font-bold " + (hasPsa9 ? roi9Color : "text-zinc-600")}>{hasPsa9 ? (r9.roi >= 0 ? "+" : "") + r9.roi.toFixed(0) + "%" : "N/A"}</td>}
                               <td className="px-4 py-3 text-right text-xs font-mono text-zinc-500">{new Date(item.addedAt).toLocaleDateString()}</td>
                               <td className="px-4 py-3 text-right">
                                 <button onClick={(e) => { e.stopPropagation(); handleRemove(item.tcgPlayerId); }} className="text-zinc-600 hover:text-red-400 transition-colors text-lg">×</button>
                               </td>
                             </tr>
-                            {isExpanded && (
+                            {!vendorMode && isExpanded && (
                               <tr key={item.tcgPlayerId + "-exp"} className="border-b border-zinc-800">
                                 <td colSpan={12} className="px-4 py-4 bg-zinc-900/40">
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -705,26 +732,32 @@ export default function Watchlist() {
                         >
                           ×
                         </button>
-                        <div className={"absolute top-2 right-2 text-xs font-black font-mono px-1.5 py-0.5 rounded-md z-10 " +
-                          (r10.roi > 50 ? "bg-emerald-500/20 text-emerald-400" : r10.roi > 0 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400")}>
-                          {r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%
-                        </div>
+                        {!vendorMode && (
+                          <div className={"absolute top-2 right-2 text-xs font-black font-mono px-1.5 py-0.5 rounded-md z-10 " +
+                            (r10.roi > 50 ? "bg-emerald-500/20 text-emerald-400" : r10.roi > 0 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400")}>
+                            {r10.roi >= 0 ? "+" : ""}{r10.roi.toFixed(0)}%
+                          </div>
+                        )}
                         {item.image && <img src={item.image} alt={item.name} className="w-full rounded-lg mb-2 mt-1" />}
                         <p className="text-sm font-bold text-white truncate">{item.name}</p>
                         <p className="text-xs text-zinc-500 truncate mb-1">{item.set}</p>
-                        <div className="flex items-center justify-between mt-1">
-                          <div>
-                            <p className="text-xs text-zinc-600 font-mono">Raw</p>
-                            <p className="text-xs text-zinc-300 font-mono font-bold">${item.rawPrice.toFixed(2)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs text-zinc-600 font-mono">PSA 10</p>
-                            <p className="text-xs text-yellow-400 font-mono font-bold">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</p>
-                          </div>
-                        </div>
-                        <div className={"mt-1.5 text-xs font-mono font-bold text-center py-1 rounded-lg " + (r10.profit >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>
-                          {r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)} profit
-                        </div>
+                        {!vendorMode && (
+                          <>
+                            <div className="flex items-center justify-between mt-1">
+                              <div>
+                                <p className="text-xs text-zinc-600 font-mono">Raw</p>
+                                <p className="text-xs text-zinc-300 font-mono font-bold">${item.rawPrice.toFixed(2)}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-zinc-600 font-mono">PSA 10</p>
+                                <p className="text-xs text-yellow-400 font-mono font-bold">{item.psa10Price > 0 ? "$" + item.psa10Price.toFixed(2) : "N/A"}</p>
+                              </div>
+                            </div>
+                            <div className={"mt-1.5 text-xs font-mono font-bold text-center py-1 rounded-lg " + (r10.profit >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>
+                              {r10.profit >= 0 ? "+" : ""}${r10.profit.toFixed(2)} profit
+                            </div>
+                          </>
+                        )}
                       </div>
                     );
                   })}
